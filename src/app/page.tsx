@@ -137,7 +137,7 @@ export default function LandingPage() {
                  side of the dashboard when the image is elongated.
       */}
       <div
-        className="relative z-10 flex-1 min-h-[45vh] sm:min-h-0
+        className="relative z-10 flex-1 min-h-[calc(100svh-240px)] sm:min-h-0
                    sm:flex-none sm:w-full sm:max-w-[1100px] sm:mx-auto sm:aspect-[1100/720]
                    overflow-hidden rounded-t-xl sm:rounded-2xl"
         style={{
@@ -158,19 +158,19 @@ export default function LandingPage() {
           }}
         />
 
-        {/* fill = position:absolute inset-0, object-left-top = zoom into left side */}
+        {/* Mobile: crop top-left | Desktop: show full image contained */}
         <Image
           src="/dashboard-hero.png"
           alt="WeaveOS Dashboard"
           fill
           priority
           sizes="(max-width: 640px) 100vw, 1100px"
-          className="object-cover object-left-top"
+          className="object-cover object-left-top sm:object-contain sm:object-center"
         />
 
-        {/* Bottom fade — blends the cropped bottom into black */}
+        {/* Bottom fade — mobile only, blends the cropped bottom into black */}
         <div
-          className="pointer-events-none absolute bottom-0 inset-x-0 z-20"
+          className="pointer-events-none absolute bottom-0 inset-x-0 z-20 sm:hidden"
           style={{
             height: "55%",
             background: "linear-gradient(to top, #000 0%, transparent 100%)",
