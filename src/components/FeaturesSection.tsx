@@ -67,13 +67,14 @@ export function FeaturesSection() {
               </div>
 
               {/* Image — fills remaining card, dissolves into black at bottom */}
-              <div className="relative flex-1 min-h-[150px] sm:min-h-[190px] overflow-hidden">
+              <div className="relative flex-1 min-h-[280px] sm:min-h-[220px] overflow-hidden">
                 <Image
                   src={card.image}
                   alt={card.alt}
                   fill
                   className="object-cover object-top"
-                  sizes="(max-width: 640px) 100vw, 400px"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1200px) 33vw, 400px"
+                  quality={90}
                 />
                 {/* Dissolve gradient — only bottom ~35% fades to black */}
                 <div
