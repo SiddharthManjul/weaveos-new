@@ -39,7 +39,7 @@ export default function LandingPage() {
         >
           {/* Row 1 — wraps to 2 lines on narrow mobile */}
           <div className="flex flex-wrap items-center justify-center gap-[0.28em]">
-            {["Pricing", "Intelligence", "Platform"].map((w) => (
+            {["Pricing", "Intelligence"].map((w) => (
               <span
                 key={w}
                 className="font-semibold text-white tracking-tight whitespace-nowrap"
