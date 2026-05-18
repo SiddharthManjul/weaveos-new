@@ -23,7 +23,7 @@ const CARDS = [
 
 export function FeaturesSection() {
   return (
-    <section className="relative z-10 w-full bg-black pt-20 pb-20 px-5">
+    <section id="features" className="relative z-10 w-full bg-black pt-20 pb-20 px-5">
       <div className="max-w-[1200px] mx-auto flex flex-col items-center gap-10">
 
         {/* ── "How it works" badge ─────────────────────────────── */}

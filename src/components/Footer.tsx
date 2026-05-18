@@ -1,28 +1,48 @@
-const COLUMNS = [
+type LinkItem = { label: string; href: string };
+
+const COLUMNS: { heading: string; links: LinkItem[] }[] = [
   {
     heading: "Product",
-    links: ["Features", "Use Cases", "Pricing", "Docs", "Changelog"],
+    links: [
+      { label: "Features",  href: "#features"  },
+      { label: "Use Cases", href: "#use-cases" },
+      { label: "Pricing",   href: "#"          },
+      { label: "Docs",      href: "#"          },
+      { label: "Changelog", href: "#"          },
+    ],
   },
   {
     heading: "Company",
-    links: ["About", "Blog", "Contact"],
+    links: [
+      { label: "About",   href: "#" },
+      { label: "Blog",    href: "#" },
+      { label: "Contact", href: "#" },
+    ],
   },
   {
     heading: "Resources",
     links: [
-      "AI Task Pricing",
-      "Margin Guardrails",
-      "Usage-Based Pricing",
-      "Agent Economics",
+      { label: "AI Task Pricing",    href: "#" },
+      { label: "Margin Guardrails",  href: "#" },
+      { label: "Usage-Based Pricing", href: "#" },
+      { label: "Agent Economics",    href: "#" },
     ],
   },
   {
     heading: "Legal",
-    links: ["Privacy Policy", "Terms of Service", "Security"],
+    links: [
+      { label: "Privacy Policy",    href: "#" },
+      { label: "Terms of Service",  href: "#" },
+      { label: "Security",          href: "#" },
+    ],
   },
   {
     heading: "Social",
-    links: ["X / Twitter", "LinkedIn", "GitHub"],
+    links: [
+      { label: "X / Twitter", href: "#" },
+      { label: "LinkedIn",    href: "#" },
+      { label: "GitHub",      href: "#" },
+    ],
   },
 ];
 
@@ -60,12 +80,12 @@ export function Footer() {
                 </p>
                 {col.links.map((link) => (
                   <a
-                    key={link}
-                    href="#"
+                    key={link.label}
+                    href={link.href}
                     className="text-[13px] transition-colors hover:text-white"
                     style={{ color: "#808080" }}
                   >
-                    {link}
+                    {link.label}
                   </a>
                 ))}
               </div>

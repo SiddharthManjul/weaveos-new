@@ -88,7 +88,7 @@ export function FeatureSplitSection() {
     <div className="relative z-10 w-full bg-black">
 
       {/* ── Row 1: Text LEFT  |  Card RIGHT ────────────────────── */}
-      <div className="max-w-[1200px] mx-auto px-5 pt-20 pb-12">
+      <div id="use-cases" className="max-w-[1200px] mx-auto px-5 pt-20 pb-12">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
 
           {/* Text */}
