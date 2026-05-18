@@ -54,22 +54,9 @@ export default function LandingPage() {
             <span className="font-semibold text-white tracking-tight whitespace-nowrap">
               for
             </span>
-            {/* Badge */}
-            <div
-              className="flex items-center shrink-0 whitespace-nowrap"
-              style={{
-                background: "#070e26",
-                borderRadius: "0.25em",
-                padding: "0.1em 0.42em",
-              }}
-            >
-              <span
-                className="font-semibold tracking-tight whitespace-nowrap"
-                style={{ color: "#3064FF", letterSpacing: "-0.01em" }}
-              >
-                Agent Economy
-              </span>
-            </div>
+            <span className="font-semibold text-white tracking-tight whitespace-nowrap">
+              Agent Economy
+            </span>
           </div>
         </div>
 
