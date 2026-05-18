@@ -66,7 +66,7 @@ export function LogoTicker() {
       {/* ── Mobile: 2 stacked rows, no label ──────────────────────── */}
       <div className="sm:hidden max-w-[1200px] mx-auto px-5 flex flex-col gap-3 py-6">
         <MarqueeRow items={ITEMS_R1} duration="20s" />
-        <MarqueeRow items={ITEMS_R2} duration="20s" reverse />
+        <MarqueeRow items={ITEMS_R2} duration="20s" />
       </div>
 
       {/* ── Desktop: label + single scrolling row ─────────────────── */}
