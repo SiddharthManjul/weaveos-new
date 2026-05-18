@@ -4,7 +4,6 @@ import { FeaturesSection } from "@/components/FeaturesSection";
 import { FeatureSplitSection } from "@/components/FeatureSplitSection";
 import { LogoTicker } from "@/components/LogoTicker";
 import { FaqSection } from "@/components/FaqSection";
-import { CtaSection } from "@/components/CtaSection";
 import { Footer } from "@/components/Footer";
 
 export default function LandingPage() {
@@ -26,7 +25,8 @@ export default function LandingPage() {
 
       {/* ── Hero ─────────────────────────────────────────────────── */}
       {/* shrink-0 prevents this from stretching — image takes the rest */}
-      <section className="relative z-10 flex flex-col items-center text-center px-5 pt-24 sm:pt-32 pb-8 shrink-0">
+      <section className="relative z-10 w-full shrink-0 pt-24 sm:pt-32 pb-8">
+        <div className="max-w-[1200px] mx-auto px-5 flex flex-col items-center text-center">
 
         {/*
           Heading — guaranteed 2 lines on every screen.
@@ -35,10 +35,10 @@ export default function LandingPage() {
         */}
         <div
           className="flex flex-col items-center text-center"
-          style={{ fontSize: "clamp(26px, 4.5vw, 60px)", lineHeight: 1.12, gap: "0.1em" }}
+          style={{ fontSize: "clamp(28px, 4.5vw, 60px)", lineHeight: 1.12, gap: "0.1em" }}
         >
-          {/* Row 1 */}
-          <div className="flex items-center justify-center gap-[0.28em]">
+          {/* Row 1 — wraps to 2 lines on narrow mobile */}
+          <div className="flex flex-wrap items-center justify-center gap-[0.28em]">
             {["Pricing", "Intelligence", "Platform"].map((w) => (
               <span
                 key={w}
@@ -123,6 +123,7 @@ export default function LandingPage() {
             </svg>
           </span>
         </a>
+        </div>{/* end max-w container */}
       </section>
 
       {/* ── Dashboard screenshot ──────────────────────────────────── */}
@@ -164,7 +165,7 @@ export default function LandingPage() {
           alt="WeaveOS Dashboard"
           fill
           priority
-          sizes="(max-width: 640px) 100vw, 1100px"
+          sizes="(max-width: 640px) 3840px, 1100px"
           className="object-cover object-left-top sm:object-contain sm:object-center"
         />
 
@@ -189,9 +190,6 @@ export default function LandingPage() {
 
       {/* ── FAQ ──────────────────────────────────────────────────── */}
       <FaqSection />
-
-      {/* ── Global CTA ───────────────────────────────────────────── */}
-      <CtaSection />
 
       {/* ── Footer ───────────────────────────────────────────────── */}
       <Footer />
