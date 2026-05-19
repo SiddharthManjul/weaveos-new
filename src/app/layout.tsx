@@ -19,6 +19,10 @@ const ancizar = Ancizar_Serif({
 export const metadata: Metadata = {
   title: "WeaveOS",
   description: "AI Pricing Platform",
+  icons: {
+    icon: "/logomark.png",
+    apple: "/logomark.png",
+  },
 };
 
 export default function RootLayout({
