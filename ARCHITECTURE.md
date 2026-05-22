@@ -358,7 +358,380 @@ await workflow.complete({
 
 ---
 
-## 10. Technical Open Questions
+## 10. Multi-Party Atomic Settlement Algorithm
+
+### 10.1 Trust model
+
+**Hybrid: enclave proposes, Move validates bounds.** The Nautilus verifier enclave computes the split table off-chain (using live provider rate cards and reconciled costs), signs it, and submits it to Move. Move never trusts the signature alone — it enforces a set of safety invariants that bound how badly a compromised enclave can fail.
+
+Defense in depth: a compromised enclave can produce *invalid* proposals (rejected by Move) but cannot drain funds.
+
+### 10.2 Inputs
+
+**From on-chain state:**
+- `Workflow` (status, references)
+- `Quote` (price, pricing_model, expires_at)
+- `Execution` (cost_items as originally reported by SDK, trace_blob_id)
+- `Outcome` (success bool, tee_attestation, enclave_measurement, dispute_window_ends)
+- Escrow `Coin<USDC>` (locked at Stage 2)
+- `Registry.Product` (fee_pct, fee_cap, min_attestations, failure_policy, registered providers)
+
+**From enclave (signed proposal):**
+
+```text
+struct SettlementProposal {
+    workflow_id: ID,
+    outcome_success: bool,
+    reconciled_cost_items: vec<CostItem>,   // verified against provider APIs
+    splits: vec<Split>,
+    platform_fee: u64,
+    nonce: vec<u8>,                          // 32 bytes
+    timestamp: u64,
+}
+```
+
+With **M ≥ `product.min_attestations`** independent AWS Nitro signatures over `sha256(serialize(proposal))`.
+
+### 10.3 Algorithm
+
+```text
+function settle_workflow(workflow, proposal, attestations):
+
+  // === 0. Preconditions ===
+  require workflow.status == VERIFIED
+  require now >= workflow.outcome.dispute_window_ends
+  require workflow.open_dispute_count == 0
+  product = registry.get_product(workflow.product_id)
+
+  // === 1. Attestation verification ===
+  require attestations.length >= product.min_attestations
+  payload_hash = sha256(serialize(proposal))
+
+  enclave_instances = empty_set()
+  for sig in attestations:
+    verify_nitro_cert_chain(sig.cert_chain, AWS_NITRO_ROOT)
+    require sig.pcr in product.allowed_pcrs
+    require ecdsa_verify(payload_hash, sig.signature, sig.cert_chain.leaf_pubkey)
+    require sig.payload_nonce == proposal.nonce
+    enclave_instances.insert(sig.cert_chain.instance_id)
+  require enclave_instances.size == attestations.length  // distinct enclaves
+
+  // === 2. Failure branch — full refund (MVP failure_policy) ===
+  if !proposal.outcome_success:
+    transfer(escrow.balance, workflow.customer)
+    workflow.status = REFUNDED
+    emit WorkflowRefunded(workflow.id, escrow.balance)
+    return
+
+  // === 3. Success-path invariants ===
+
+  // 3a. No self-pay
+  for s in proposal.splits:
+    require s.amount > 0
+    require s.recipient != workflow.customer
+
+  // 3b. Recipients must be known
+  for s in proposal.splits:
+    if s.role == ROLE_AGENT_COMPANY:
+      require s.recipient == product.agent_company_address
+    else if s.role == ROLE_PLATFORM:
+      require s.recipient == PLATFORM_TREASURY
+    else:   // MODEL, TOOL, HUMAN
+      require registry.is_registered_provider(s.recipient, s.role)
+
+  // 3c. Bounded total
+  total_out = sum(s.amount for s in proposal.splits)
+  require total_out <= escrow.balance
+  require total_out <= quote.price
+
+  // 3d. Platform fee bounded
+  require proposal.platform_fee <= product.fee_cap
+  require proposal.platform_fee <= (quote.price * product.fee_max_bps) / 10_000
+
+  // 3e. Provider splits must equal reconciled costs
+  provider_total = sum(s.amount for s in proposal.splits
+                        where s.role in {MODEL, TOOL, HUMAN})
+  reconciled_total = sum(c.amount for c in proposal.reconciled_cost_items)
+  require provider_total == reconciled_total
+
+  // 3f. Cost reporting drift (informational)
+  if reconciled_total != execution.total_cost:
+    emit CostReportingDrift(workflow.id, execution.total_cost, reconciled_total)
+
+  // === 4. Atomic disbursement (single PTB) ===
+  remaining = escrow
+  for s in proposal.splits:
+    let coin = coin_split(remaining, s.amount)
+    transfer(coin, s.recipient)
+
+  // Residual back to customer (rounding / unspent budget)
+  if remaining.value > 0:
+    transfer(remaining, workflow.customer)
+
+  // === 5. State commit ===
+  let settlement = create_settlement_object(
+    workflow_id    = workflow.id,
+    splits         = proposal.splits,
+    total_settled  = total_out,
+    platform_fee   = proposal.platform_fee,
+    settled_at     = now,
+  )
+  workflow.settlement_id = some(settlement.id)
+  workflow.status        = SETTLED
+  workflow.total_revenue = total_out
+  workflow.total_cost    = provider_total
+  workflow.margin        = total_out - provider_total - proposal.platform_fee
+  emit WorkflowSettled(workflow.id, settlement.id, proposal.splits)
+```
+
+### 10.4 Settlement trigger
+
+`settle_workflow` is **permissionless** — any address can call it. The platform runs a keeper that triggers as soon as `dispute_window_ends`. Agent companies or third parties can also call. Caller pays gas (recovered from `platform_fee` on success; eaten by platform on refund-path).
+
+### 10.5 Failure modes & guarantees
+
+| Failure | Effect | Why safe |
+|---|---|---|
+| Enclave compromised, signs bogus splits | Move rejects (3b/3c/3d): unregistered recipient, sum > escrow, or fee > cap | Bounds enforced on-chain |
+| Replay of stale proposal | Move rejects: nonce mismatch, or workflow already SETTLED | Status + nonce checks |
+| Customer self-pay attack | Move rejects in 3a | Explicit check |
+| Provider address misregistration | Funds go to wrong registered address (operator hygiene) | Registry audit logs + governance |
+| Escrow insufficient | Move rejects in 3c | Bound check |
+| Reconciled cost > original SDK report | Settlement succeeds; agent's margin absorbs diff; event emitted | `margin = total_out − provider_total − platform_fee` |
+| Gas exhaustion mid-PTB | Tx aborts atomically — **no partial payment** | Sui PTB semantics |
+| Single enclave outage (M=1) | Settlement stalls until enclave back | Multi-enclave deployment + auto-extend dispute window |
+
+### 10.6 Pricing-model variants (forward-compatible)
+
+MVP supports only `pricing_model = fixed` with `failure_policy = full_refund` (hardcoded). The algorithm is forward-compatible:
+
+| Model | On success | On failure (MVP) | On failure (Phase 2) |
+|---|---|---|---|
+| fixed (0) | Pay `quote.price` per splits | Full refund | Full refund (default) or cost-recovery |
+| capped (1) | Pay `min(reconciled_total × markup, quote.price)` | Full refund | Configurable |
+| success_fee (2) | Pay `quote.base + quote.success_fee` | Full refund | Pay `quote.base` only |
+| hybrid (3) | Pay `quote.base + min(variable, cap)` | Full refund | Pay `quote.base × partial_rate` |
+
+Phase 2 adds `Quote.base_price`, `Quote.success_fee_component`, `Quote.cap` fields. MVP `Quote.price` is the all-in amount.
+
+### 10.7 Gas & PTB-size considerations
+
+A workflow with many providers (e.g., 20 model calls + 10 tool calls = 30 splits) still fits in a single PTB on Sui — current limits accommodate ~256 commands per PTB. If a workflow approaches this limit, the SDK pre-aggregates same-provider splits (one entry per `(provider, role)` tuple, summed) before submission. This aggregation is verified by Move in 3e (`provider_total == reconciled_total`).
+
+---
+
+## 11. Cryptographically Verifiable Outcomes Algorithm
+
+### 11.1 Trust model
+
+**Layered verifier: deterministic-first, multi-LLM voting for fuzzy criteria.** The MVP enclave runs only deterministic predicates. Phase 2 adds semantic verification via 2-of-3 LLM voting (Claude / GPT / Gemini), with each LLM call TLS-attested and recorded in the proof blob on Walrus.
+
+The enclave produces a single signed claim:
+
+> `(workflow_id, outcome_success, reconciled_cost_items, proposed_splits, evidence_pointers, nonce, timestamp)`
+
+Move `billing::attestation` verifies the AWS Nitro signature and the enclave PCR before recording the `Outcome` object on-chain and feeding the proposal into Settlement (§10).
+
+### 11.2 Success criteria DSL
+
+`Quote.success_criteria` is CBOR-encoded. The schema is a tagged union:
+
+```typescript
+type SuccessCriterion =
+  | { type: 'exact';             path: string; value: JsonValue }
+  | { type: 'regex';             path: string; pattern: string; flags?: string }
+  | { type: 'json_schema';       schema: JSONSchema }
+  | { type: 'numeric_threshold'; path: string;
+      op: '<' | '<=' | '>' | '>=' | '==' | '!='; value: number }
+  | { type: 'semantic_match';    path: string; expected: string; threshold: number }   // Phase 2
+  | { type: 'all_of';            criteria: SuccessCriterion[] }
+  | { type: 'any_of';            criteria: SuccessCriterion[] }
+  | { type: 'not';               criterion: SuccessCriterion };
+```
+
+- `path` is an [RFC 6901 JSON Pointer](https://datatracker.ietf.org/doc/html/rfc6901) into the outcome record.
+- `Quote.success_criteria_hash = sha256(success_criteria_cbor)` — the verifier checks this matches before evaluating, so criteria cannot be tampered with after quote acceptance.
+
+MVP supports the four deterministic predicates + Boolean composition. `semantic_match` is parsed but rejected with `UnsupportedCriterion` until Phase 2.
+
+### 11.3 Verification algorithm (in enclave)
+
+```text
+function verify(outcome_record, cost_trace, quote, workflow_id):
+
+  // === 1. Tamper check ===
+  require sha256(quote.success_criteria) == quote.success_criteria_hash
+
+  // === 2. Evidence storage ===
+  outcome_blob_id = walrus.put(serialize(outcome_record))
+  trace_blob_id   = walrus.put(serialize(cost_trace))
+
+  // === 3. Criteria evaluation ===
+  criteria = cbor.decode(quote.success_criteria)
+  (success, evaluation_trace) = evaluate(criteria, outcome_record)
+
+  // === 4. Cost reconciliation ===
+  reconciled_costs = []
+  for c in cost_trace:
+    provider_invoice = fetch_provider_usage(c.provider, c.window)  // OpenAI/Anthropic API
+    actual_amount    = match_and_validate(c, provider_invoice)
+    reconciled_costs.append(CostItem{ ...c, amount: actual_amount })
+
+  // === 5. Split proposal (success path only) ===
+  if success:
+    splits       = compute_splits(quote.price, reconciled_costs, product)
+    platform_fee = (quote.price * product.fee_bps) / 10_000
+  else:
+    splits       = []      // failure → full refund in Move
+    platform_fee = 0
+
+  // === 6. Proof blob ===
+  proof = {
+    evaluation_trace,            // per-criterion match/miss with paths
+    llm_judgments,               // [] in MVP; Phase 2: 3 LLM verdicts + req/resp hashes
+    reconciliation_diffs,        // per-cost-item: reported vs actual
+    quote_hash:    sha256(quote),
+    criteria_hash: quote.success_criteria_hash,
+    nonce:         secure_random(32),
+  }
+  proof_blob_id = walrus.put(serialize(proof))
+
+  // === 7. Sign ===
+  payload = AttestationPayload {
+    workflow_id,
+    outcome_success: success,
+    outcome_blob_id,
+    trace_blob_id,
+    proof_blob_id,
+    reconciled_cost_items: reconciled_costs,
+    splits,
+    platform_fee,
+    nonce:     proof.nonce,
+    timestamp: now,
+  }
+  signature = nitro_sign(sha256(serialize(payload)))
+
+  return (payload, signature, nitro_pcr())
+```
+
+### 11.4 Evaluation primitives
+
+| Type | Algorithm | Determinism |
+|---|---|---|
+| `exact` | `json_pointer(o, path) == value` (structural equality) | ✅ Pure comparison |
+| `regex` | Compile pattern with **RE2** (no catastrophic backtracking); match against string at path | ✅ Bounded-time |
+| `json_schema` | Validate outcome against JSON Schema 2020-12 | ✅ Deterministic |
+| `numeric_threshold` | Coerce value at path to number; apply comparison | ✅ Pure |
+| `semantic_match` *(Phase 2)* | Multi-LLM voting — see §11.5 | ⚠️ Probabilistic; mitigated by 2-of-3 voting |
+| `all_of` | Logical AND over children, short-circuit | ✅ Deterministic |
+| `any_of` | Logical OR over children, short-circuit | ✅ Deterministic |
+| `not` | Logical NOT | ✅ Deterministic |
+
+The evaluator produces a structured trace:
+
+```jsonc
+{
+  "result": true,
+  "steps": [
+    { "criterion": { "type": "exact", "path": "/ticket_status", "value": "closed" },
+      "actual": "closed", "matched": true },
+    { "criterion": { "type": "numeric_threshold", "path": "/refund_amount", "op": "<=", "value": 100 },
+      "actual": 47.50, "matched": true }
+  ]
+}
+```
+
+This trace is included in the proof blob — customers can replay verification deterministically from Walrus evidence.
+
+### 11.5 Semantic match (Phase 2)
+
+For `semantic_match`, the enclave:
+
+1. **Builds a judgment prompt:**
+   ```
+   You are a verification judge. Determine if ACTUAL matches EXPECTED with
+   similarity ≥ {threshold}.
+   Reply with JSON only: {"matches": bool, "confidence": 0.0-1.0, "reason": string}.
+
+   EXPECTED:
+   {expected}
+
+   ACTUAL:
+   {json_pointer(outcome, path)}
+   ```
+2. **Makes TLS-attested calls in parallel** to:
+   - Anthropic Claude API
+   - OpenAI GPT API
+   - Google Gemini API
+3. Each call appends `{ vendor, request_hash, response_hash, tls_cert_fingerprint, verdict }` to `proof.llm_judgments`.
+4. **Vote:** `success` iff ≥ 2 of 3 return `matches: true` with `confidence >= threshold`.
+5. **Vendor outage degrades gracefully:**
+   - 2 vendors reachable → 2-of-2 unanimous required (otherwise escalate to dispute arbitrator)
+   - 1 vendor reachable → fail closed; auto-extend dispute window for human review
+
+This design mitigates: single-vendor bias, single-vendor outage, single-vendor pricing volatility, and prompt-injection attacks targeted at a single model family.
+
+### 11.6 Attestation binding (on-chain verification)
+
+Move `billing::attestation` validates each enclave signature:
+
+```text
+function verify_attestation(payload, signature, allowed_pcrs, workflow):
+  // 1. AWS Nitro cert chain → root
+  chain = parse_chain(signature.cert_chain)
+  verify_chain_to_root(chain, AWS_NITRO_ROOT_CERT)
+
+  // 2. PCR allowlist
+  pcr = extract_pcr_from_attestation_doc(signature)
+  require pcr in allowed_pcrs
+
+  // 3. Signature over payload
+  require ecdsa_verify(
+    sha256(serialize(payload)),
+    signature.bytes,
+    chain.leaf_public_key,
+  )
+
+  // 4. Payload-Workflow binding (no replay across workflows)
+  require payload.workflow_id == workflow.id
+  require payload.timestamp >= workflow.execution.completed_at
+  require payload.timestamp <= now
+```
+
+The PCR allowlist lives in `Registry.allowed_pcrs: vec<vec<u8>>` and is admin-controlled (with on-chain governance for mainnet). **Rolling upgrade procedure:** when the enclave code is updated, the new PCR is *added* before the old one is *removed* — workflows in flight against the old enclave continue to verify until they settle.
+
+### 11.7 M-of-N attestation
+
+`Registry.Product.min_attestations: u8` defaults to **1**.
+
+For `min_attestations > 1`:
+
+- **N independent enclave instances** (distinct EC2 instance IDs, distinct AWS Nitro cert chains) each run verification on the same inputs
+- They must produce **byte-identical payloads** for the same workflow — the deterministic verifier guarantees this (modulo timestamp, which is normalized to a shared sync point)
+- Move requires:
+  - `attestations.length ≥ min_attestations`
+  - All payload hashes identical (`sha256(payload_i) == sha256(payload_j)` for all i, j)
+  - All cert chains distinct (no replay of a single enclave instance's signature)
+  - All PCRs in allowlist
+
+This is how high-value workflows (e.g., > $10K settlement) can demand stricter trust without imposing the cost on every workflow.
+
+### 11.8 Properties & threat model
+
+| Property | How guaranteed |
+|---|---|
+| Outcome cannot be forged by agent company | Verifier runs in Nautilus, not on agent infra |
+| Outcome cannot be forged by platform | Enclave reproducibly built; source public; PCR pinned on-chain |
+| Criteria cannot be retroactively changed | `success_criteria_hash` in Quote, checked by verifier at evaluation time |
+| Verification is replayable | All inputs (outcome, trace, proof) on Walrus; evaluator is deterministic |
+| Attestation cannot be replayed cross-workflow | `payload.workflow_id` binding + timestamp range |
+| Single enclave compromise cannot drain funds | Settlement bounds in Move (§10.3); M-of-N for high-value (§11.7) |
+| Single LLM bias cannot dictate semantic outcomes | 2-of-3 multi-vendor voting (§11.5) |
+| Single LLM vendor outage cannot halt platform | Graceful degradation in §11.5 |
+
+---
+
+## 12. Technical Open Questions
 
 Decisions to make before or during MVP:
 
@@ -370,7 +743,7 @@ Decisions to make before or during MVP:
 
 ---
 
-## 11. Repository Layout (target)
+## 13. Repository Layout (target)
 
 ```
 weaveos-new/
