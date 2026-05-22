@@ -36,6 +36,27 @@ Three planes — see `ARCHITECTURE.md` for the full spec.
 | SDK | TypeScript first (`packages/sdk/`); Python phase 1.5; Go + Rust phase 2 |
 | Hosting | Frontend on Vercel; backend on EKS multi-region active-active |
 
+## Locked algorithm decisions
+
+The two algorithms that the platform's moat rests on — multi-party atomic settlement and cryptographically verifiable outcomes. Full specs in `ARCHITECTURE.md` §10 and §11.
+
+### Multi-party atomic settlement (§10)
+
+- **Hybrid: Nautilus enclave proposes splits, Move validates bounds.** Enclave reconciles costs vs provider APIs, computes splits, signs. Move enforces invariants (registered recipients in `Registry`, `sum(splits) ≤ escrow`, `platform_fee ≤ cap`, no self-pay).
+- **Failure policy (MVP):** Full refund to customer on `success = false`. Agent company eats provider costs. Configurable per product in Phase 2 (cost-recovery / partial).
+- **Permissionless settlement:** anyone can call `settle_workflow` after dispute window closes; platform runs a keeper as default trigger.
+- **Single PTB, all-or-nothing:** all transfers + state updates execute atomically. Gas exhaustion mid-PTB → tx aborts, no partial payment.
+- **Defense in depth:** a compromised enclave can produce invalid proposals (rejected by Move) but cannot drain funds.
+
+### Cryptographically verifiable outcomes (§11)
+
+- **Success criteria DSL:** tagged-union — `exact | regex | json_schema | numeric_threshold | semantic_match | all_of | any_of | not`. CBOR-encoded in `Quote.success_criteria`; `Quote.success_criteria_hash = sha256(...)` stored for tamper detection. Paths use **RFC 6901 JSON Pointer**.
+- **Layered verifier:** MVP ships **deterministic-only** (exact, regex, json_schema, numeric_threshold, Boolean composition). Phase 2 adds `semantic_match` via **2-of-3 multi-LLM voting** (Claude / GPT / Gemini), TLS-attested, evidence on Walrus. Graceful degradation on vendor outage.
+- **Attestation payload binds:** `workflow_id`, success bool, blob IDs (outcome / trace / proof), reconciled cost items, splits, fee, nonce, timestamp. AWS Nitro signature; PCR allowlist in `Registry`, rolling-upgrade safe.
+- **M-of-N attestation:** `Registry.Product.min_attestations: u8`, default **1**. High-value products can require 2-of-3 independent enclave instances with byte-identical payloads.
+
+---
+
 ## Build phases (MVP — 24 weeks)
 
 Following the doc's milestone plan. **Move contracts first** (everything else depends on object shapes).
