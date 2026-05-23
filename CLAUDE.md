@@ -103,6 +103,7 @@ Following the doc's milestone plan. **Move contracts first** (everything else de
 ## Pointers
 
 - **Full architecture:** `ARCHITECTURE.md`
+- **Visual diagrams + feature coverage matrix:** `DIAGRAMS.md`
 - **Source doc:** `backend/technical_architecture.docx`
 - **Frontend entry:** `src/app/page.tsx`, `src/app/dashboard/page.tsx`
 - **Next.js rules:** `AGENTS.md`
