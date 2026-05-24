@@ -18,7 +18,9 @@
 // full lifecycle on devnet while the enclave is being built.
 module weaveos::attestation;
 
+use std::bcs;
 use sui::clock::Clock;
+use sui::ed25519;
 use weaveos::execution::CostItem;
 use weaveos::outcome;
 use weaveos::quote::{Self, Quote};
@@ -34,6 +36,9 @@ const E_DUPLICATE_ENCLAVE: u64 = 700005;
 const E_QUOTE_MISMATCH: u64 = 700006;
 const E_EXECUTION_REQUIRED: u64 = 700007;
 const E_PRODUCT_MISMATCH: u64 = 700008;
+const E_BAD_DEV_SIGNER: u64 = 700009;
+const E_BAD_DEV_SIGNATURE: u64 = 700010;
+const E_DUPLICATE_DEV_SIGNER: u64 = 700011;
 
 // === Public types (re-used by settlement) ===
 
@@ -44,6 +49,15 @@ public struct EnclaveAttestation has store, copy, drop {
     /// EC2 instance ID embedded in the Nitro attestation document.
     enclave_instance_id: vector<u8>,
     /// ECDSA signature over `sha256(serialize(payload))`. Not verified in P1.
+    signature: vector<u8>,
+}
+
+/// HACKATHON MODE: one ed25519 attestation from a registered dev signer.
+/// `signature` is verified live (unlike `EnclaveAttestation.signature` in P1).
+public struct DevAttestation has store, copy, drop {
+    /// 32-byte ed25519 public key. Must be in `Product.allowed_dev_signers`.
+    signer_pubkey: vector<u8>,
+    /// 64-byte ed25519 signature over `bcs::to_bytes(&payload)`.
     signature: vector<u8>,
 }
 
@@ -93,6 +107,16 @@ public fun attestation_instance_id(a: &EnclaveAttestation): &vector<u8> {
     &a.enclave_instance_id
 }
 public fun attestation_signature(a: &EnclaveAttestation): &vector<u8> { &a.signature }
+
+public fun new_dev_attestation(
+    signer_pubkey: vector<u8>,
+    signature: vector<u8>,
+): DevAttestation {
+    DevAttestation { signer_pubkey, signature }
+}
+
+public fun dev_signer_pubkey(a: &DevAttestation): &vector<u8> { &a.signer_pubkey }
+public fun dev_signature(a: &DevAttestation): &vector<u8> { &a.signature }
 
 public fun new_payload(
     workflow_id: ID,
@@ -187,6 +211,92 @@ fun contains_bytes(haystack: &vector<vector<u8>>, needle: &vector<u8>): bool {
         i = i + 1;
     };
     false
+}
+
+/// HACKATHON MODE: verify M-of-N ed25519 attestations against
+/// `Product.allowed_dev_signers`. Drop-in replacement for `verify_attestations`
+/// that uses Vercel-style ed25519 keys instead of AWS Nitro cert chains.
+///
+/// The signature MUST be over `bcs::to_bytes(payload)`. The TS verifier must
+/// use the @mysten/sui BCS encoder with the same field order as
+/// `AttestationPayload` to produce identical bytes.
+public fun verify_dev_attestations<T>(
+    workflow: &Workflow<T>,
+    product: &Product,
+    payload: &AttestationPayload,
+    dev_attestations: &vector<DevAttestation>,
+    clock: &Clock,
+) {
+    // 1. Workflow binding
+    assert!(payload.workflow_id == object::id(workflow), E_WORKFLOW_MISMATCH);
+
+    // 2. Timestamp not from the future
+    let now = clock.timestamp_ms();
+    assert!(payload.timestamp_ms <= now, E_TIMESTAMP_FUTURE);
+
+    // 3. Min-N (re-uses Product.min_attestations — same semantics as Nitro path)
+    let n = dev_attestations.length();
+    assert!(n >= (registry::min_attestations(product) as u64), E_INSUFFICIENT_ATTESTATIONS);
+
+    // 4. Canonical payload bytes (BCS) — must match what TS signed.
+    let payload_bytes = bcs::to_bytes(payload);
+
+    // 5. Distinct signers + pubkey in allowlist + signature valid
+    let mut seen_pubkeys: vector<vector<u8>> = vector[];
+    let mut i: u64 = 0;
+    while (i < n) {
+        let a = dev_attestations.borrow(i);
+        assert!(registry::is_dev_signer_allowed(product, &a.signer_pubkey), E_BAD_DEV_SIGNER);
+        assert!(!contains_bytes(&seen_pubkeys, &a.signer_pubkey), E_DUPLICATE_DEV_SIGNER);
+        seen_pubkeys.push_back(a.signer_pubkey);
+
+        let valid = ed25519::ed25519_verify(&a.signature, &a.signer_pubkey, &payload_bytes);
+        assert!(valid, E_BAD_DEV_SIGNATURE);
+
+        i = i + 1;
+    };
+}
+
+/// HACKATHON MODE: verify ed25519 attestations + create the Outcome object.
+/// Mirror of `verify_and_record_outcome` for the dev path.
+public fun verify_and_record_outcome_dev<T>(
+    workflow: &mut Workflow<T>,
+    product: &Product,
+    quote: &Quote,
+    payload: AttestationPayload,
+    dev_attestations: vector<DevAttestation>,
+    dispute_window_seconds: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): ID {
+    // Linkage checks (same as production path)
+    assert!(workflow::product_id(workflow) == object::id(product), E_PRODUCT_MISMATCH);
+    assert!(quote::product_id(quote) == object::id(product), E_PRODUCT_MISMATCH);
+    let stored_qid_opt = workflow::quote_id(workflow);
+    assert!(stored_qid_opt.is_some(), E_QUOTE_MISMATCH);
+    assert!(*stored_qid_opt.borrow() == object::id(quote), E_QUOTE_MISMATCH);
+    assert!(workflow::execution_id(workflow).is_some(), E_EXECUTION_REQUIRED);
+
+    verify_dev_attestations(workflow, product, &payload, &dev_attestations, clock);
+
+    // Use primary attestation's pubkey as the recorded "measurement" (audit trail).
+    let primary_pubkey = *dev_signer_pubkey(dev_attestations.borrow(0));
+    let primary_sig = *dev_signature(dev_attestations.borrow(0));
+    let outcome_blob = *payload_outcome_blob_id(&payload);
+    let proof_blob = *payload_proof_blob_id(&payload);
+    let success = payload.outcome_success;
+
+    outcome::create(
+        workflow,
+        success,
+        outcome_blob,
+        proof_blob,
+        primary_sig,
+        primary_pubkey,
+        dispute_window_seconds,
+        clock,
+        ctx,
+    )
 }
 
 /// Stage 5 — verify attestation + create the Outcome object.

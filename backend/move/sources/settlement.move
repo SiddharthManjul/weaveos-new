@@ -13,7 +13,7 @@ module weaveos::settlement;
 
 use sui::clock::Clock;
 use sui::event;
-use weaveos::attestation::{Self, AttestationPayload, EnclaveAttestation, Split};
+use weaveos::attestation::{Self, AttestationPayload, DevAttestation, EnclaveAttestation, Split};
 use weaveos::escrow;
 use weaveos::execution::{Self, Execution, CostItem};
 use weaveos::outcome::{Self, Outcome};
@@ -70,7 +70,8 @@ public struct CostReportingDrift has copy, drop {
     reconciled_total: u64,
 }
 
-/// Implements ARCHITECTURE.md §10.3.
+/// Production path — implements ARCHITECTURE.md §10.3.
+/// Verifies AWS Nitro attestation, then applies the settlement proposal.
 public fun settle_workflow<T>(
     workflow: &mut Workflow<T>,
     product: &Product,
@@ -82,6 +83,45 @@ public fun settle_workflow<T>(
     attestations: vector<EnclaveAttestation>,
     clock: &Clock,
     ctx: &mut TxContext,
+) {
+    prepare_settlement(workflow, product, quote, execution, outcome_obj, &payload, clock);
+    attestation::verify_attestations(workflow, product, &payload, &attestations, clock);
+    do_settle(workflow, product, provider_registry, quote, execution, payload, clock, ctx);
+}
+
+/// HACKATHON path — verifies ed25519 dev-signer attestations, then applies the
+/// settlement proposal. Identical invariants to `settle_workflow`; only the
+/// signature verification step differs.
+public fun settle_workflow_dev<T>(
+    workflow: &mut Workflow<T>,
+    product: &Product,
+    provider_registry: &ProviderRegistry,
+    quote: &Quote,
+    execution: &Execution,
+    outcome_obj: &Outcome,
+    payload: AttestationPayload,
+    dev_attestations: vector<DevAttestation>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    prepare_settlement(workflow, product, quote, execution, outcome_obj, &payload, clock);
+    attestation::verify_dev_attestations(workflow, product, &payload, &dev_attestations, clock);
+    do_settle(workflow, product, provider_registry, quote, execution, payload, clock, ctx);
+}
+
+// === Internal: shared preconditions ===
+
+/// Checks every condition that must hold before we run signature verification:
+/// status, dispute window, no open disputes, every passed object belongs to
+/// this workflow, and the payload binds to this workflow + outcome.
+fun prepare_settlement<T>(
+    workflow: &Workflow<T>,
+    product: &Product,
+    quote: &Quote,
+    execution: &Execution,
+    outcome_obj: &Outcome,
+    payload: &AttestationPayload,
+    clock: &Clock,
 ) {
     // === 0. Preconditions ===
     assert!(workflow::status(workflow) == types::status_verified(), E_NOT_VERIFIED);
@@ -97,20 +137,34 @@ public fun settle_workflow<T>(
     assert!(stored_qid_opt.is_some(), E_QUOTE_MISMATCH);
     assert!(*stored_qid_opt.borrow() == object::id(quote), E_QUOTE_MISMATCH);
 
-    // Payload binding — what the enclave signed must match what we have on-chain.
+    // Payload binding — what the verifier signed must match what we have on chain.
     assert!(
-        attestation::payload_workflow_id(&payload) == wf_id,
+        attestation::payload_workflow_id(payload) == wf_id,
         E_PAYLOAD_WORKFLOW_MISMATCH,
     );
     assert!(
-        attestation::payload_outcome_success(&payload) == outcome::success(outcome_obj),
+        attestation::payload_outcome_success(payload) == outcome::success(outcome_obj),
         E_PAYLOAD_OUTCOME_MISMATCH,
     );
+}
 
-    // === 1. Attestation re-verification (§11.6) ===
-    attestation::verify_attestations(workflow, product, &payload, &attestations, clock);
+// === Internal: post-verification settlement ===
 
-    // Snapshot fields we need across the success-path borrow gymnastics.
+/// All of ARCHITECTURE.md §10.3 steps 2–5: failure refund, success-path
+/// invariant checks, atomic disbursement, state commit. Both `settle_workflow`
+/// and `settle_workflow_dev` call this after their respective signature-
+/// verification step has succeeded.
+fun do_settle<T>(
+    workflow: &mut Workflow<T>,
+    product: &Product,
+    provider_registry: &ProviderRegistry,
+    quote: &Quote,
+    execution: &Execution,
+    payload: AttestationPayload,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let wf_id = object::id(workflow);
     let customer = workflow::customer(workflow);
     let agent_co = registry::agent_company(product);
     let success = attestation::payload_outcome_success(&payload);
@@ -129,8 +183,6 @@ public fun settle_workflow<T>(
     };
 
     // === 3. Success-path invariants ===
-    // Copy out the proposal data we need so we can release borrow on `payload`
-    // before mutating the workflow's escrow.
     let splits: vector<Split> = *attestation::payload_splits(&payload);
     let platform_fee = attestation::payload_platform_fee(&payload);
     let reconciled_total = sum_cost_items(attestation::payload_reconciled_cost_items(&payload));

@@ -21,6 +21,12 @@ const E_PROVIDER_NOT_REGISTERED: u64 = 100006;
 const E_PCR_ALREADY_ALLOWED: u64 = 100007;
 const E_PCR_NOT_ALLOWED: u64 = 100008;
 const E_PRODUCT_INACTIVE: u64 = 100009;
+const E_DEV_SIGNER_ALREADY_ALLOWED: u64 = 100010;
+const E_DEV_SIGNER_NOT_ALLOWED: u64 = 100011;
+const E_INVALID_DEV_SIGNER_LENGTH: u64 = 100012;
+
+/// Length of an ed25519 public key in bytes.
+const ED25519_PUBKEY_LEN: u64 = 32;
 
 const MAX_BPS: u16 = 10_000;
 
@@ -53,6 +59,11 @@ public struct Product has key {
     /// PCR measurements that are accepted for outcome verification. Add-before-remove
     /// rolling upgrades keep workflows in flight valid (§11.6).
     allowed_pcrs: VecSet<vector<u8>>,
+    /// HACKATHON MODE: ed25519 public keys (32 bytes each) authorized to sign
+    /// AttestationPayloads via the dev path. Used by `attestation::verify_dev_attestations`
+    /// when the production Nautilus path is not available.
+    /// In production this would typically be empty; the Nitro PCR allowlist takes over.
+    allowed_dev_signers: VecSet<vector<u8>>,
     /// MVP: always FAILURE_FULL_REFUND. Phase 2: per-product configurable.
     failure_policy: u8,
     /// Whether new workflows can be quoted against this product.
@@ -106,6 +117,16 @@ public struct PcrRevoked has copy, drop {
     pcr: vector<u8>,
 }
 
+public struct DevSignerAllowed has copy, drop {
+    product_id: ID,
+    pubkey: vector<u8>,
+}
+
+public struct DevSignerRevoked has copy, drop {
+    product_id: ID,
+    pubkey: vector<u8>,
+}
+
 // === Init ===
 
 /// Module initializer. Mints AdminCap to publisher and creates the empty
@@ -150,6 +171,7 @@ public fun create_product(
         fee_max_bps,
         min_attestations,
         allowed_pcrs: vec_set::empty(),
+        allowed_dev_signers: vec_set::empty(),
         failure_policy,
         active: true,
         created_at_ms: clock_ms,
@@ -181,6 +203,23 @@ public fun revoke_pcr(_admin: &AdminCap, product: &mut Product, pcr: vector<u8>)
     let pcr_copy = pcr;
     product.allowed_pcrs.remove(&pcr);
     event::emit(PcrRevoked { product_id: object::id(product), pcr: pcr_copy });
+}
+
+// === Admin: dev signer (hackathon-mode) ===
+
+public fun allow_dev_signer(_admin: &AdminCap, product: &mut Product, pubkey: vector<u8>) {
+    assert!(pubkey.length() == ED25519_PUBKEY_LEN, E_INVALID_DEV_SIGNER_LENGTH);
+    assert!(!product.allowed_dev_signers.contains(&pubkey), E_DEV_SIGNER_ALREADY_ALLOWED);
+    let pubkey_copy = pubkey;
+    product.allowed_dev_signers.insert(pubkey);
+    event::emit(DevSignerAllowed { product_id: object::id(product), pubkey: pubkey_copy });
+}
+
+public fun revoke_dev_signer(_admin: &AdminCap, product: &mut Product, pubkey: vector<u8>) {
+    assert!(product.allowed_dev_signers.contains(&pubkey), E_DEV_SIGNER_NOT_ALLOWED);
+    let pubkey_copy = pubkey;
+    product.allowed_dev_signers.remove(&pubkey);
+    event::emit(DevSignerRevoked { product_id: object::id(product), pubkey: pubkey_copy });
 }
 
 // === Admin entry: provider directory ===
@@ -232,6 +271,10 @@ public fun failure_policy(product: &Product): u8 { product.failure_policy }
 
 public fun is_pcr_allowed(product: &Product, pcr: &vector<u8>): bool {
     product.allowed_pcrs.contains(pcr)
+}
+
+public fun is_dev_signer_allowed(product: &Product, pubkey: &vector<u8>): bool {
+    product.allowed_dev_signers.contains(pubkey)
 }
 
 public fun assert_active(product: &Product) {

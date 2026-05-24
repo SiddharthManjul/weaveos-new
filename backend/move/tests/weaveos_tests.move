@@ -49,6 +49,16 @@ fun atte(sig: vector<u8>): attestation::EnclaveAttestation {
     attestation::new_attestation(PCR, ENCLAVE_ID_A, sig)
 }
 
+fun zero_bytes(n: u64): vector<u8> {
+    let mut v: vector<u8> = vector[];
+    let mut i: u64 = 0;
+    while (i < n) {
+        v.push_back(0u8);
+        i = i + 1;
+    };
+    v
+}
+
 /// Set up: AdminCap, ProviderRegistry, Product with one allowed PCR, plus
 /// registered model + tool providers. Returns Product ID + Quote ID + the
 /// final scenario state in `tx_2`.
@@ -710,6 +720,162 @@ fun unregistered_recipient_rejected() {
         ts::return_immutable(quote);
         ts::return_shared(exec);
         ts::return_shared(outc);
+        clock::destroy_for_testing(clk);
+    };
+    ts::end(scenario);
+}
+
+// === Dev-signer path: unregistered pubkey is rejected ===
+//
+// Crypto is hard to exercise inside Move tests because there's no `ed25519_sign`
+// — only `ed25519_verify`. So we cover the validation invariants here (signer
+// allowlist, bad signature) and leave the happy-path signing to the off-chain
+// TS verifier tests (P2 task 24, end-to-end test on Vercel preview).
+
+#[test]
+#[expected_failure(abort_code = 700009, location = weaveos::attestation)]
+fun dev_path_unregistered_signer_rejected() {
+    let mut scenario = ts::begin(ADMIN);
+    let (_pid, _qid) = setup_scenario(&mut scenario);
+    // Note: setup_scenario only registers the PCR (production path). It does
+    // NOT register any dev signers, so any dev attestation should fail.
+    ts::next_tx(&mut scenario, CUSTOMER);
+    {
+        let product = ts::take_shared<Product>(&scenario);
+        let quote = ts::take_immutable<quote::Quote>(&scenario);
+        let payment = mint(PRICE, ts::ctx(&mut scenario));
+        let mut clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        clock::set_for_testing(&mut clk, 1_500_000);
+        workflow::create_from_quote<USDC>(
+            &product, &quote, payment, &clk, ts::ctx(&mut scenario),
+        );
+        ts::return_shared(product);
+        ts::return_immutable(quote);
+        clock::destroy_for_testing(clk);
+    };
+    ts::next_tx(&mut scenario, CUSTOMER);
+    {
+        let mut wf = ts::take_shared<Workflow<USDC>>(&scenario);
+        let mut clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        clock::set_for_testing(&mut clk, 1_600_000);
+        execution::record<USDC>(&mut wf, 1_500_000, vector[], b"t", &clk, ts::ctx(&mut scenario));
+        ts::return_shared(wf);
+        clock::destroy_for_testing(clk);
+    };
+    // Try to verify outcome via dev path — pubkey is not registered → abort.
+    ts::next_tx(&mut scenario, CUSTOMER);
+    {
+        let mut wf = ts::take_shared<Workflow<USDC>>(&scenario);
+        let product = ts::take_shared<Product>(&scenario);
+        let quote = ts::take_immutable<quote::Quote>(&scenario);
+        let mut clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        clock::set_for_testing(&mut clk, 1_700_000);
+
+        let payload = attestation::new_payload(
+            object::id(&wf), true,
+            b"o", b"t", b"p", vector[],
+            vector[attestation::new_split(AGENT_CO, 100_000_000, types::role_agent_company())],
+            0, b"n", 1_700_000,
+        );
+        let bogus_pubkey: vector<u8> = vector[
+            1u8,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16,
+           17,   18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+        ];
+        let bogus_sig: vector<u8> = zero_bytes(64);
+        let dev_attestations = vector[attestation::new_dev_attestation(bogus_pubkey, bogus_sig)];
+
+        attestation::verify_and_record_outcome_dev<USDC>(
+            &mut wf, &product, &quote, payload, dev_attestations,
+            DISPUTE_WINDOW_SEC, &clk, ts::ctx(&mut scenario),
+        );
+
+        ts::return_shared(wf);
+        ts::return_shared(product);
+        ts::return_immutable(quote);
+        clock::destroy_for_testing(clk);
+    };
+    ts::end(scenario);
+}
+
+// === Dev-signer path: registered pubkey but bad signature is rejected ===
+
+#[test]
+#[expected_failure(abort_code = 700010, location = weaveos::attestation)]
+fun dev_path_bad_signature_rejected() {
+    let mut scenario = ts::begin(ADMIN);
+    let (_pid, _qid) = setup_scenario(&mut scenario);
+
+    // Register a dummy ed25519 pubkey on the Product. We never use the
+    // corresponding private key — we just want the allowlist check to pass
+    // so the bad-signature check fires next.
+    let dev_pubkey: vector<u8> = vector[
+        7u8, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        7,   7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+    ];
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let admin = ts::take_from_sender<AdminCap>(&scenario);
+        let mut product = ts::take_shared<Product>(&scenario);
+        registry::allow_dev_signer(&admin, &mut product, dev_pubkey);
+        ts::return_to_sender(&scenario, admin);
+        ts::return_shared(product);
+    };
+
+    ts::next_tx(&mut scenario, CUSTOMER);
+    {
+        let product = ts::take_shared<Product>(&scenario);
+        let quote = ts::take_immutable<quote::Quote>(&scenario);
+        let payment = mint(PRICE, ts::ctx(&mut scenario));
+        let mut clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        clock::set_for_testing(&mut clk, 1_500_000);
+        workflow::create_from_quote<USDC>(
+            &product, &quote, payment, &clk, ts::ctx(&mut scenario),
+        );
+        ts::return_shared(product);
+        ts::return_immutable(quote);
+        clock::destroy_for_testing(clk);
+    };
+    ts::next_tx(&mut scenario, CUSTOMER);
+    {
+        let mut wf = ts::take_shared<Workflow<USDC>>(&scenario);
+        let mut clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        clock::set_for_testing(&mut clk, 1_600_000);
+        execution::record<USDC>(&mut wf, 1_500_000, vector[], b"t", &clk, ts::ctx(&mut scenario));
+        ts::return_shared(wf);
+        clock::destroy_for_testing(clk);
+    };
+    ts::next_tx(&mut scenario, CUSTOMER);
+    {
+        let mut wf = ts::take_shared<Workflow<USDC>>(&scenario);
+        let product = ts::take_shared<Product>(&scenario);
+        let quote = ts::take_immutable<quote::Quote>(&scenario);
+        let mut clk = clock::create_for_testing(ts::ctx(&mut scenario));
+        clock::set_for_testing(&mut clk, 1_700_000);
+
+        let payload = attestation::new_payload(
+            object::id(&wf), true,
+            b"o", b"t", b"p", vector[],
+            vector[attestation::new_split(AGENT_CO, 100_000_000, types::role_agent_company())],
+            0, b"n", 1_700_000,
+        );
+        // pubkey is allowlisted; signature is all zeros → ed25519_verify returns false
+        let bad_sig: vector<u8> = zero_bytes(64);
+        let dev_pubkey_local: vector<u8> = vector[
+            7u8, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+            7,   7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+        ];
+        let dev_attestations = vector[
+            attestation::new_dev_attestation(dev_pubkey_local, bad_sig),
+        ];
+
+        attestation::verify_and_record_outcome_dev<USDC>(
+            &mut wf, &product, &quote, payload, dev_attestations,
+            DISPUTE_WINDOW_SEC, &clk, ts::ctx(&mut scenario),
+        );
+
+        ts::return_shared(wf);
+        ts::return_shared(product);
+        ts::return_immutable(quote);
         clock::destroy_for_testing(clk);
     };
     ts::end(scenario);

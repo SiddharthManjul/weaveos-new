@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-05-24T18:24:52.935Z",
+  "pubkeyHex": "45b327dbafb1bc4b4864deb8e40f91c3a76c73a2a888704cdcebf739fefe663d",
+  "pubkeyForMoveArg": "0x45b327dbafb1bc4b4864deb8e40f91c3a76c73a2a888704cdcebf739fefe663d",
+  "registrationCommand": "sui client call\n  --package <PACKAGE_ID>\n  --module registry\n  --function allow_dev_signer\n  --args <ADMIN_CAP> <PRODUCT_ID> 0x45b327dbafb1bc4b4864deb8e40f91c3a76c73a2a888704cdcebf739fefe663d\n  --gas-budget 50000000",
+  "notes": [
+    "Private key (WEAVEOS_DEV_SIGNER_PRIVKEY) lives in .env.local only — gitignored.",
+    "The /api/verify route reads this env var and signs AttestationPayload bytes with it.",
+    "The Move verify_dev_attestations function uses the pubkey to verify.",
+    "To rotate: re-run this script, register the new pubkey, then revoke the old one."
+  ]
+}
