@@ -1,0 +1,55 @@
+{
+  "network": "testnet",
+  "rpc": "https://fullnode.testnet.sui.io:443",
+  "publishedAt": "2026-05-24T05:59:43Z",
+  "txDigest": "FifHFPUG9EqppeVGKp5cAEQMQm3ixxKz7zwrFFBpJxKR",
+  "packageId": "0x0e6a08aa50fd80129d8ae83b0a3ccdee3e7becdce84785f96f547e09fd52ca6d",
+  "modules": [
+    "attestation",
+    "escrow",
+    "execution",
+    "outcome",
+    "quote",
+    "registry",
+    "settlement",
+    "types",
+    "workflow"
+  ],
+  "deployer": "0xa7d0740b247a14ea578bf6f65b352d56e4fa6fdc8f69a6ce4b1276513bb85d2c",
+  "objects": {
+    "adminCap": {
+      "id": "0x35d194afc0e999f39bc7e992db279eddddb757e987c1056977d5f63d859a1868",
+      "type": "0x0e6a08aa50fd80129d8ae83b0a3ccdee3e7becdce84785f96f547e09fd52ca6d::registry::AdminCap",
+      "owner": "0xa7d0740b247a14ea578bf6f65b352d56e4fa6fdc8f69a6ce4b1276513bb85d2c"
+    },
+    "upgradeCap": {
+      "id": "0x9169fd22b46823c56931a01f9c82bc57c40f2104a089754c6293e9024401de27",
+      "type": "0x2::package::UpgradeCap",
+      "owner": "0xa7d0740b247a14ea578bf6f65b352d56e4fa6fdc8f69a6ce4b1276513bb85d2c"
+    },
+    "providerRegistry": {
+      "id": "0xd6d669ea72bc2fdb4e3153a74ef46868b4042e0829ed98a3561bab13cc8cd7ca",
+      "type": "0x0e6a08aa50fd80129d8ae83b0a3ccdee3e7becdce84785f96f547e09fd52ca6d::registry::ProviderRegistry",
+      "owner": "shared",
+      "initialSharedVersion": 349181674
+    }
+  },
+  "gas": {
+    "computationCost": 1320000,
+    "storageCost": 143556400,
+    "storageRebate": 978120,
+    "nonRefundableStorageFee": 9880,
+    "totalSpentSui": 0.14389828
+  },
+  "explorerUrl": "https://suiscan.xyz/testnet/tx/FifHFPUG9EqppeVGKp5cAEQMQm3ixxKz7zwrFFBpJxKR",
+  "smokeTest": {
+    "exampleProductId": "0xde71da9a69d2f01a05ae7ddb1c24ed8b2ca71d69b68e3454b94c6b1912d377e8",
+    "exampleProductSlug": "ticket-resolution-mvp",
+    "registeredProviderRole_1": {
+      "address": "0x000000000000000000000000000000000000000000000000000000000000a6e7",
+      "role": "model_provider (1)",
+      "name": "anthropic"
+    },
+    "createProductTxDigest": "26fgccwa7K9P1YvhURAk9Nf4QrRDtVTJMzPoTyNUV7TV"
+  }
+}
