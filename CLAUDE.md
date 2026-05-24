@@ -15,11 +15,22 @@ Three planes — see `ARCHITECTURE.md` for the full spec.
 - **Data plane → Walrus** — execution traces, outcome artifacts, proof blobs, dispute evidence. Sui stores only blob IDs + hashes.
 - **Off-chain (our infra, Node.js + TypeScript)** — Sui event indexer, customer API (tRPC + REST), cost ingestion workers (OpenAI/Anthropic APIs), webhook delivery.
 
-## Repo state (2026-05-20)
+## Repo state (2026-05-23)
 
 - **Frontend (`src/`)** — Next.js **16.2.6**, React **19.2.4**, TypeScript strict, Tailwind v4, Recharts, HugeIcons. Landing page + 9 dashboard routes scaffolded **UI-only** (no Sui SDK, no Walrus SDK, no wallet, no API client wired). Routes: `/dashboard`, `/workflows`, `/workflows/[id]`, `/quotes`, `/settlement`, `/margin`, `/customers`, `/pricing-intel`, `/settings`, `/developer`.
-- **Backend (`backend/`)** — Only contains `technical_architecture.docx` (source of truth). No Move package, no enclaves, no off-chain services yet.
-- **Packages** — No SDK package yet. Will live at `packages/sdk/` (`@platform/sdk`).
+- **Backend Move package (`backend/move/`)** — ✅ **P1 COMPLETE.** Published to Sui testnet 2026-05-24. 9 modules, 6/6 unit tests passing locally, 3 live txs validated on chain.
+  - **Package ID:** `0x0e6a08aa50fd80129d8ae83b0a3ccdee3e7becdce84785f96f547e09fd52ca6d` (testnet)
+  - **AdminCap:** `0x35d194afc0e999f39bc7e992db279eddddb757e987c1056977d5f63d859a1868` (owner: deployer)
+  - **ProviderRegistry (shared):** `0xd6d669ea72bc2fdb4e3153a74ef46868b4042e0829ed98a3561bab13cc8cd7ca`
+  - **UpgradeCap:** `0x9169fd22b46823c56931a01f9c82bc57c40f2104a089754c6293e9024401de27`
+  - **Deployer/admin:** `0xa7d0740b247a14ea578bf6f65b352d56e4fa6fdc8f69a6ce4b1276513bb85d2c`
+  - **Modules:** `types`, `registry`, `quote`, `escrow`, `workflow`, `execution`, `outcome`, `attestation`, `settlement`
+  - **Local tests (6/6):** happy-path settlement, failure-path refund, settle-before-window rejected, self-pay rejected, unregistered recipient rejected, dispute blocks settlement
+  - **Live testnet validation:** package + ProviderRegistry queryable; `create_product` worked (emitted `ProductCreated`); `register_provider` worked (emitted `ProviderRegistered`, mutated ProviderRegistry)
+  - **Full deployment record:** `backend/move/deployments/testnet.json`
+  - Phantom-typed escrow `Escrow<T>` (generic over coin type — `USDC` marker used in tests; real Circle USDC type swapped in at customer-PTB construction time)
+  - **Attestation P1 stub:** PCR allowlist + M-of-N distinct enclaves + payload binding. Full AWS Nitro cert-chain verification lands in P2.
+- **Enclaves, off-chain services, SDK** — not started yet (P2/P3+).
 
 ## Stack decisions (locked)
 
@@ -71,7 +82,7 @@ Following the doc's milestone plan. **Move contracts first** (everything else de
 | **P6 — Mainnet launch** | 17–20 | Audit complete; mainnet deploy; 3 design partners in production |
 | **P7 — Scale-up** | 21–24 | Hardening, observability, cost-ingestion reliability; phase-2 prep |
 
-**Currently entering Phase 1.** Next action: scaffold `backend/move/` as a single Sui Move package.
+**Phase 1 status (2026-05-24):** ✅ COMPLETE. Move package compiled clean, 6/6 unit tests pass locally, published to testnet (`0x0e6a08aa...`), live txs validated. **Now entering P2: Nautilus outcome verifier enclave (weeks 4–6).**
 
 ## Workflow lifecycle (7 stages)
 
