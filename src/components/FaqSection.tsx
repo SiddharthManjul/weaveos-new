@@ -46,7 +46,7 @@ export function FaqSection({ questions, heading, subtitle }: {
       <div className="max-w-[1200px] mx-auto px-5">
 
         {/* ── Header ───────────────────────────────────────────── */}
-        <div className="flex flex-col items-center text-center mb-12 gap-4">
+        <div className="flex flex-col items-start text-left mb-12 gap-4">
 
           {/* FAQ badge */}
           <div className="inline-flex w-fit rounded-full p-[1px]" style={{ background: "linear-gradient(135deg, #1a1a1a, #2e2e2e)" }}>

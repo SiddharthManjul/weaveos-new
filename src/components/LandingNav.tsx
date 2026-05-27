@@ -40,13 +40,15 @@ export function LandingNav() {
           logo gets pointer-events-auto individually.               */}
       <nav className="fixed top-0 inset-x-0 z-50 bg-black pointer-events-none">
         <div className="max-w-[1200px] mx-auto px-5 h-16 flex items-center">
-          <img
-            src="/logo.svg"
-            alt="WeaveOS"
-            width={110}
-            height={22}
-            style={{ display: "block", pointerEvents: "auto" }}
-          />
+          <a href="/" style={{ pointerEvents: "auto" }}>
+            <img
+              src="/logo.svg"
+              alt="WeaveOS"
+              width={110}
+              height={22}
+              style={{ display: "block" }}
+            />
+          </a>
         </div>
       </nav>
 
