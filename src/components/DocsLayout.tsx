@@ -204,16 +204,17 @@ export function DocsLayout({ children }: { children: React.ReactNode }) {
         <aside
           className={`
             fixed md:relative z-40 md:z-auto
-            w-[240px] flex-shrink-0 h-full overflow-y-auto
-            flex flex-col gap-6 py-8 px-5
+            top-14 md:top-0
+            w-[240px] flex-shrink-0
+            h-[calc(100svh-56px)] md:h-full
+            overflow-y-auto
+            flex flex-col gap-6 pt-5 pb-8 px-5
             transition-transform duration-300 md:translate-x-0
             ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
           `}
           style={{
             background: "#080808",
             borderRight: "1px solid #141414",
-            top: 56, // below top bar
-            height: "calc(100% - 56px)",
           }}
         >
           {DOCS_NAV.map((group) => (
@@ -251,7 +252,7 @@ export function DocsLayout({ children }: { children: React.ReactNode }) {
             style={{ borderTop: "1px solid #141414" }}
           >
             {[
-              { label: "Changelog",  href: "#" },
+              { label: "Changelog",  href: "/changelog" },
               { label: "GitHub",     href: "#" },
               { label: "Status",     href: "#" },
             ].map((l) => (
@@ -272,7 +273,7 @@ export function DocsLayout({ children }: { children: React.ReactNode }) {
 
         {/* Content */}
         <main className="flex-1 overflow-y-auto">
-          <div className="max-w-[760px] px-8 md:px-12 py-12">
+          <div className="max-w-[760px] px-8 md:px-12 pt-8 pb-12">
             {children}
           </div>
         </main>

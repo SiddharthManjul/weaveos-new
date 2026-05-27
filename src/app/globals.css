@@ -4,6 +4,10 @@
   --font-sans: var(--font-dm-sans);
 }
 
+:root {
+  color-scheme: dark;
+}
+
 *, ::before, ::after {
   box-sizing: border-box;
   /* Continuous/squircle corner smoothing on every rounded element */
@@ -12,6 +16,7 @@
 
 body {
   font-family: var(--font-dm-sans), sans-serif;
+  color: #d4d4d4;
 }
 
 @keyframes marquee {
@@ -23,19 +28,19 @@ body {
 .blog-body p {
   font-size: clamp(15px, 1.6vw, 17px);
   line-height: 1.8;
-  color: #808080;
+  color: #808080 !important;
   margin-bottom: 1.5rem;
 }
 
 .blog-body strong {
-  color: #d4d4d4;
+  color: #d4d4d4 !important;
   font-weight: 600;
 }
 
 .blog-body h2 {
   font-size: clamp(20px, 2.2vw, 26px);
   font-weight: 600;
-  color: #ffffff;
+  color: #ffffff !important;
   line-height: 1.25;
   margin-top: 3rem;
   margin-bottom: 1rem;
@@ -44,7 +49,7 @@ body {
 .blog-body h3 {
   font-size: clamp(15px, 1.6vw, 18px);
   font-weight: 600;
-  color: #d4d4d4;
+  color: #d4d4d4 !important;
   line-height: 1.3;
   margin-top: 2rem;
   margin-bottom: 0.6rem;
@@ -64,7 +69,7 @@ body {
 .blog-body ol li {
   font-size: clamp(15px, 1.6vw, 17px);
   line-height: 1.75;
-  color: #808080;
+  color: #808080 !important;
   padding-left: 1.25rem;
   position: relative;
 }
@@ -111,22 +116,26 @@ body {
 }
 
 /* ── Docs prose styles ─────────────────────────────────────── */
+.docs-body {
+  color: #d4d4d4;
+}
+
 .docs-body p {
   font-size: 14px;
   line-height: 1.8;
-  color: #808080;
+  color: #808080 !important;
   margin-bottom: 1.25rem;
 }
 
 .docs-body strong {
-  color: #d4d4d4;
+  color: #d4d4d4 !important;
   font-weight: 600;
 }
 
 .docs-body h1 {
   font-size: 28px;
   font-weight: 600;
-  color: #ffffff;
+  color: #ffffff !important;
   line-height: 1.2;
   margin-bottom: 0.5rem;
   letter-spacing: -0.02em;
@@ -135,7 +144,7 @@ body {
 .docs-body h2 {
   font-size: 20px;
   font-weight: 600;
-  color: #ffffff;
+  color: #ffffff !important;
   line-height: 1.3;
   margin-top: 3rem;
   margin-bottom: 0.75rem;
@@ -146,7 +155,7 @@ body {
 .docs-body h3 {
   font-size: 14px;
   font-weight: 600;
-  color: #d4d4d4;
+  color: #d4d4d4 !important;
   line-height: 1.4;
   margin-top: 1.75rem;
   margin-bottom: 0.5rem;
@@ -168,7 +177,7 @@ body {
 .docs-body ol li {
   font-size: 14px;
   line-height: 1.7;
-  color: #808080;
+  color: #808080 !important;
   padding-left: 1.1rem;
   position: relative;
 }
@@ -221,7 +230,7 @@ body {
 
 .docs-body thead th {
   text-align: left;
-  color: #d4d4d4;
+  color: #d4d4d4 !important;
   font-weight: 600;
   padding: 0.6rem 0.75rem;
   font-size: 12px;
@@ -235,7 +244,7 @@ body {
 
 .docs-body tbody td {
   padding: 0.65rem 0.75rem;
-  color: #808080;
+  color: #808080 !important;
   vertical-align: top;
   line-height: 1.6;
 }
