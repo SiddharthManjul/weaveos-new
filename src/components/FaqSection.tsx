@@ -70,7 +70,7 @@ export function FaqSection({ questions, heading, subtitle }: {
         </div>
 
         {/* ── Accordion ────────────────────────────────────────── */}
-        <div className="flex flex-col gap-3 max-w-[800px] mx-auto">
+        <div className="flex flex-col gap-3 w-full">
           {FAQS.map((faq, i) => {
             const isOpen = openIdx === i;
             const num = String(i + 1).padStart(2, "0");
