@@ -13,7 +13,7 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
   // Landing, resource/blog, and changelog pages — render without shell
-  if (pathname === "/" || pathname.startsWith("/resources") || pathname === "/changelog") {
+  if (pathname === "/" || pathname.startsWith("/resources") || pathname === "/changelog" || pathname === "/about" || pathname === "/contact" || pathname === "/blog") {
     return (
       <div className="flex-1 overflow-y-auto bg-black">
         {children}
