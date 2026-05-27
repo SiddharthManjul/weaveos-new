@@ -242,20 +242,10 @@ export default function PricingPage() {
                 </Link>
 
                 {/* GMV rate */}
-                <div
-                  className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-6"
-                  style={{ background: "#111112", border: "1px solid #1e1e1e" }}
-                >
-                  <span
-                    className="text-[18px] font-semibold leading-none"
-                    style={{ color: "#3064FF" }}
-                  >
-                    {plan.gmv}
-                  </span>
-                  <span className="text-[11px] leading-tight" style={{ color: "#3a3a3a" }}>
-                    {plan.gmvNote}
-                  </span>
-                </div>
+                <p className="text-[13px] mb-5" style={{ color: "#808080" }}>
+                  <span className="text-white font-semibold">{plan.gmv}</span>
+                  {" "}{plan.gmvNote}
+                </p>
 
                 {/* Divider */}
                 <div className="mb-5" style={{ borderTop: "1px dashed #272727" }} />
