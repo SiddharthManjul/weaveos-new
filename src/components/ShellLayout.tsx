@@ -12,10 +12,19 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
   // Close sidebar on route change
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
-  // Landing page and resource/blog pages — render without shell
+  // Landing + resource/blog pages — render without shell
   if (pathname === "/" || pathname.startsWith("/resources")) {
     return (
       <div className="flex-1 overflow-y-auto bg-black">
+        {children}
+      </div>
+    );
+  }
+
+  // Docs pages — DocsLayout manages its own scroll
+  if (pathname.startsWith("/docs")) {
+    return (
+      <div className="flex-1 overflow-hidden">
         {children}
       </div>
     );
