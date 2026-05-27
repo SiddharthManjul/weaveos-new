@@ -22,10 +22,10 @@ const COLUMNS: { heading: string; links: LinkItem[] }[] = [
   {
     heading: "Resources",
     links: [
-      { label: "AI Task Pricing",    href: "#" },
-      { label: "Margin Guardrails",  href: "#" },
-      { label: "Usage-Based Pricing", href: "#" },
-      { label: "Agent Economics",    href: "#" },
+      { label: "AI Task Pricing",     href: "/resources/ai-task-pricing" },
+      { label: "Margin Guardrails",   href: "/resources/margin-guardrails" },
+      { label: "Usage-Based Pricing", href: "/resources/usage-based-pricing" },
+      { label: "Agent Economics",     href: "/resources/agent-economics" },
     ],
   },
   {
