@@ -24,7 +24,7 @@ const CARDS = [
 export function FeaturesSection() {
   return (
     <section id="features" className="relative z-10 w-full bg-black pt-20 pb-20 px-5">
-      <div className="max-w-[1200px] mx-auto flex flex-col items-center gap-10">
+      <div className="max-w-[1200px] mx-auto flex flex-col items-start gap-10">
 
         {/* ── "How it works" badge ─────────────────────────────── */}
         <div className="inline-flex w-fit rounded-full p-[1px]" style={{ background: "linear-gradient(135deg, #1a1a1a, #2e2e2e)" }}>
@@ -35,7 +35,7 @@ export function FeaturesSection() {
 
         {/* ── Heading — fixed 40px, grey = #808080 ─────────────── */}
         <div
-          className="flex flex-col items-center text-center"
+          className="flex flex-col items-start text-left"
           style={{ fontSize: "clamp(28px, 3.2vw, 40px)", lineHeight: 1.18, gap: "0.08em" }}
         >
           <span className="font-semibold" style={{ color: "#808080" }}>

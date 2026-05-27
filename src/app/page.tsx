@@ -26,19 +26,14 @@ export default function LandingPage() {
       {/* ── Hero ─────────────────────────────────────────────────── */}
       {/* shrink-0 prevents this from stretching — image takes the rest */}
       <section className="relative z-10 w-full shrink-0 pt-24 sm:pt-32 pb-8">
-        <div className="max-w-[1200px] mx-auto px-5 flex flex-col items-center text-center">
+        <div className="max-w-[1200px] mx-auto px-5 flex flex-col items-start text-left">
 
-        {/*
-          Heading — guaranteed 2 lines on every screen.
-          flex-col with two explicit rows: row 1 = "Pricing Intelligence Platform",
-          row 2 = "for [Agent Economy badge]". No flex-wrap guessing.
-        */}
         <div
-          className="flex flex-col items-center text-center"
+          className="flex flex-col items-start text-left"
           style={{ fontSize: "clamp(28px, 4.5vw, 60px)", lineHeight: 1.12, gap: "0.1em" }}
         >
           {/* Row 1 — wraps to 2 lines on narrow mobile */}
-          <div className="flex flex-wrap items-center justify-center gap-[0.28em]">
+          <div className="flex flex-wrap items-center justify-start gap-[0.28em]">
             {["Pricing", "Intelligence"].map((w) => (
               <span
                 key={w}
@@ -50,7 +45,7 @@ export default function LandingPage() {
           </div>
 
           {/* Row 2 */}
-          <div className="flex items-center justify-center gap-[0.28em]">
+          <div className="flex items-center justify-start gap-[0.28em]">
             <span className="font-semibold text-white tracking-tight whitespace-nowrap">
               for
             </span>
