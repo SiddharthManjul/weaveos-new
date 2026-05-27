@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const FAQS = [
+const DEFAULT_FAQS = [
   {
     q: "What exactly does the platform do?",
     a: "It helps AI companies understand the real economics of every task their agents run, including cost, price, margin, and profitability.",
@@ -33,7 +33,12 @@ const FAQS = [
   },
 ];
 
-export function FaqSection() {
+export function FaqSection({ questions, heading, subtitle }: {
+  questions?: { q: string; a: string }[];
+  heading?: string;
+  subtitle?: React.ReactNode;
+} = {}) {
+  const FAQS = questions ?? DEFAULT_FAQS;
   const [openIdx, setOpenIdx] = useState<number | null>(null);
 
   return (
@@ -55,13 +60,12 @@ export function FaqSection() {
             className="font-bold text-white tracking-tight"
             style={{ fontSize: "clamp(28px, 3.2vw, 40px)", lineHeight: 1.14 }}
           >
-            Any questions?
+            {heading ?? "Any questions?"}
           </h2>
 
           {/* Subtitle */}
           <p className="text-[16px] leading-relaxed" style={{ color: "#808080" }}>
-            See the info below or drop us a line via the{" "}
-            <span className="text-white font-semibold">support</span> page.
+            {subtitle ?? <>See the info below or drop us a line via the{" "}<span className="text-white font-semibold">support</span> page.</>}
           </p>
         </div>
 

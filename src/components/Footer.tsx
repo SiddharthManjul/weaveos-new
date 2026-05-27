@@ -6,7 +6,7 @@ const COLUMNS: { heading: string; links: LinkItem[] }[] = [
     links: [
       { label: "Features",  href: "#features"  },
       { label: "Use Cases", href: "#use-cases" },
-      { label: "Pricing",   href: "#"          },
+      { label: "Pricing",   href: "/pricing"    },
       { label: "Docs",      href: "/docs"       },
       { label: "Changelog", href: "/changelog"  },
     ],

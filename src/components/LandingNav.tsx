@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from "react";
 
-const NAV_LINKS = ["Product", "Pricing", "Blog", "About", "Contact"];
+const NAV_LINKS = [
+  { label: "Product",  href: "/#features"  },
+  { label: "Pricing",  href: "/pricing"    },
+  { label: "Blog",     href: "/blog"       },
+  { label: "About",    href: "/about"      },
+  { label: "Contact",  href: "/contact"    },
+];
 
 const DESKTOP = { closedW: 115, closedH: 44, openW: 300, openH: 430, linkSize: 38 };
 const MOBILE  = { closedW:  92, closedH: 36, openW: 260, openH: 360, linkSize: 30 };
@@ -118,14 +124,14 @@ export function LandingNav() {
           <div className="flex flex-col items-center px-6 pt-4 pb-8">
             {NAV_LINKS.map((link) => (
               <a
-                key={link}
-                href="#"
+                key={link.label}
+                href={link.href}
                 className="text-white font-semibold py-2.5 text-center w-full
                            hover:opacity-50 transition-opacity"
                 style={{ fontSize: linkSize, lineHeight: 1.2 }}
                 onClick={() => setOpen(false)}
               >
-                {link}
+                {link.label}
               </a>
             ))}
           </div>
