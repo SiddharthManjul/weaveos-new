@@ -12,9 +12,11 @@ import {
   AlertDiamondIcon,
   FilterIcon,
   CalendarIcon,
+  PlayCircleIcon,
 } from "@hugeicons/core-free-icons";
+import { LifecycleDemoDrawer } from "@/components/LifecycleDemoDrawer";
 
-type Status = "Settled" | "Executing" | "Quoted" | "Disputed" | "Refunded";
+type Status = "Settled" | "Executing" | "Verified" | "Quoted" | "Disputed" | "Refunded";
 type DateRange = "Last 7 Days" | "Last 30 Days" | "Last 90 Days" | "All Time";
 
 type Workflow = {
@@ -30,6 +32,7 @@ type Workflow = {
 
 const statusConfig: Record<Status, { bg: string; color: string }> = {
   Settled:   { bg: "rgba(74,  222, 128, 0.1)", color: "#4ade80" },
+  Verified:  { bg: "rgba(96,  165, 250, 0.1)", color: "#60a5fa" },
   Executing: { bg: "rgba(245, 158,  11, 0.1)", color: "#f59e0b" },
   Quoted:    { bg: "rgba(34,  211, 238, 0.1)", color: "#22d3ee" },
   Disputed:  { bg: "rgba(248, 113, 113, 0.1)", color: "#f87171" },
@@ -37,27 +40,65 @@ const statusConfig: Record<Status, { bg: string; color: string }> = {
 };
 
 const ALL_STATUSES: Array<Status | "All"> = [
-  "All", "Settled", "Executing", "Quoted", "Disputed", "Refunded",
+  "All", "Settled", "Verified", "Executing", "Quoted", "Disputed", "Refunded",
 ];
 
 const DATE_RANGES: DateRange[] = [
   "Last 7 Days", "Last 30 Days", "Last 90 Days", "All Time",
 ];
 
-const workflows: Workflow[] = [
-  { id: "wf_e4rgffg44fg4g44", customer: "Acme Inc",                  priceQuoted: "$23.53", costBilled: "$23.53", margin: "-53%", positive: false, status: "Settled",   time: "3 mins ago" },
-  { id: "wf_e4rgffg44fg4g44", customer: "Beco – Beta Corporation",   priceQuoted: "$0.14",  costBilled: "$0.14",  margin: "-52%", positive: false, status: "Settled",   time: "3 mins ago" },
-  { id: "wf_e4rgffg44fg4g44", customer: "Base – Base Corporation",   priceQuoted: "$1.14",  costBilled: "$1.14",  margin: "-90%", positive: false, status: "Executing", time: "3 mins ago" },
-  { id: "wf_e4rgffg44fg4g44", customer: "Nation – National Group",   priceQuoted: "$0.48",  costBilled: "$0.48",  margin: "-43%", positive: false, status: "Quoted",    time: "3 mins ago" },
-  { id: "wf_e4rgffg44fg4g44", customer: "NAW – Nationwide Corp.",    priceQuoted: "$0.24",  costBilled: "$0.24",  margin: "+87%", positive: true,  status: "Disputed",  time: "3 mins ago" },
-  { id: "wf_e4rgffg44fg4g44", customer: "Jaco – Jaguar Corporation", priceQuoted: "$0.08",  costBilled: "$0.08",  margin: "+14%", positive: true,  status: "Disputed",  time: "3 mins ago" },
-  { id: "wf_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  priceQuoted: "$0.00",  costBilled: "$0.00",  margin: "-60%", positive: false, status: "Refunded",  time: "3 mins ago" },
-  { id: "wf_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  priceQuoted: "N/A",    costBilled: "N/A",    margin: "-85%", positive: false, status: "Settled",   time: "3 mins ago" },
-  { id: "wf_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  priceQuoted: "$0.00",  costBilled: "$0.00",  margin: "-58%", positive: false, status: "Settled",   time: "3 mins ago" },
-  { id: "wf_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  priceQuoted: "N/A",    costBilled: "N/A",    margin: "-43%", positive: false, status: "Executing", time: "3 mins ago" },
-  { id: "wf_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  priceQuoted: "$0.00",  costBilled: "$0.00",  margin: "+11%", positive: true,  status: "Quoted",    time: "3 mins ago" },
-  { id: "wf_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  priceQuoted: "$0.00",  costBilled: "$0.00",  margin: "-71%", positive: false, status: "Disputed",  time: "3 mins ago" },
-];
+/** Shape returned by /api/sui/workflows. Mirrors WorkflowSummary in queries.ts. */
+type ApiWorkflow = {
+  id: string;
+  customer: string;
+  status: Status;
+  statusEnum: number;
+  totalRevenue: number;
+  totalCost: number;
+  margin: number;
+  escrowBalance: number;
+  updatedAtMs: number;
+};
+
+function formatSuiAmount(baseUnits: number): string {
+  if (!baseUnits) return "0 SUI";
+  return `${(baseUnits / 1e9).toLocaleString(undefined, { maximumFractionDigits: 4 })} SUI`;
+}
+
+function relTime(ts: number): string {
+  if (!ts) return "—";
+  const d = Date.now() - ts;
+  const s = Math.floor(d / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min${m === 1 ? "" : "s"} ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} hr${h === 1 ? "" : "s"} ago`;
+  return `${Math.floor(h / 24)} day(s) ago`;
+}
+
+function toRow(w: ApiWorkflow): Workflow {
+  const inFlight = w.statusEnum !== 3 && w.statusEnum !== 5;
+  const priceQuoted = inFlight ? formatSuiAmount(w.escrowBalance) : formatSuiAmount(w.totalRevenue);
+  const costBilled = w.statusEnum === 3 ? formatSuiAmount(w.totalCost) : "—";
+  let marginStr = "—";
+  let positive = false;
+  if (w.statusEnum === 3 && w.totalRevenue > 0) {
+    const pct = (w.margin / w.totalRevenue) * 100;
+    positive = pct >= 0;
+    marginStr = `${positive ? "+" : ""}${pct.toFixed(1)}%`;
+  }
+  return {
+    id: w.id,
+    customer: w.customer,
+    priceQuoted,
+    costBilled,
+    margin: marginStr,
+    positive,
+    status: w.status,
+    time: relTime(w.updatedAtMs),
+  };
+}
 
 /* Fixed-position tooltip — escapes any overflow:hidden ancestor */
 function Tooltip({ label, children }: { label: string; children: React.ReactNode }) {
@@ -77,7 +118,7 @@ function Tooltip({ label, children }: { label: string; children: React.ReactNode
       </div>
       {coords && (
         <div
-          className="pointer-events-none fixed z-[9999] -translate-x-1/2 -translate-y-full px-2 py-1 bg-[#1e1e1e] border border-[#2a2a2a] rounded-md text-[11px] text-[#a3a3a3] whitespace-nowrap"
+          className="pointer-events-none fixed z-9999 -translate-x-1/2 -translate-y-full px-2 py-1 bg-[#1e1e1e] border border-[#2a2a2a] rounded-md text-[11px] text-[#a3a3a3] whitespace-nowrap"
           style={{ left: coords.x, top: coords.y - 8 }}
         >
           {label}
@@ -142,7 +183,7 @@ function PillDropdown<T extends string>({
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1.5 bg-[#1a1a1a] border border-[#272727] rounded-xl overflow-hidden shadow-2xl z-50 min-w-[160px]">
+        <div className="absolute top-full left-0 mt-1.5 bg-[#1a1a1a] border border-[#272727] rounded-xl overflow-hidden shadow-2xl z-50 min-w-40">
           {options.map((opt) => (
             <button
               key={opt}
@@ -169,10 +210,46 @@ export default function WorkflowsPage() {
   const [search, setSearch]           = useState("");
   const [statusFilter, setStatusFilter] = useState<Status | "All">("All");
   const [dateRange, setDateRange]     = useState<DateRange>("Last 7 Days");
+  const [workflows, setWorkflows]     = useState<Workflow[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+  const [demoOpen, setDemoOpen]       = useState(false);
+  const [demoMode, setDemoMode]       = useState<"success" | "failure">("success");
+
+  const fetchWorkflows = async () => {
+    try {
+      const r = await fetch("/api/sui/workflows", { cache: "no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const json = (await r.json()) as { workflows: ApiWorkflow[] };
+      setWorkflows(json.workflows.map(toRow));
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!cancelled) await fetchWorkflows();
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Re-fetch when the demo drawer closes — there may be a new workflow on chain.
+  useEffect(() => {
+    if (!demoOpen) fetchWorkflows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoOpen]);
 
   const filtered = workflows.filter((w) => {
     const q = search.toLowerCase();
-    const matchesSearch = !q || w.id.includes(q) || w.customer.toLowerCase().includes(q);
+    const matchesSearch = !q || w.id.toLowerCase().includes(q) || w.customer.toLowerCase().includes(q);
     const matchesStatus = statusFilter === "All" || w.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -235,7 +312,37 @@ export default function WorkflowsPage() {
           mobileIcon={CalendarIcon}
         />
 
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Run demo */}
+        <button
+          onClick={() => {
+            setDemoMode("success");
+            setDemoOpen(true);
+          }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium bg-[#3064FF] hover:bg-[#2050d0] text-white transition-colors"
+        >
+          <HugeiconsIcon icon={PlayCircleIcon} size={14} color="currentColor" strokeWidth={1.5} />
+          Run demo workflow
+        </button>
+        <button
+          onClick={() => {
+            setDemoMode("failure");
+            setDemoOpen(true);
+          }}
+          className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium bg-[#1e1e1e] border border-[#272727] text-[#a3a3a3] hover:text-white transition-colors"
+        >
+          Run failure case
+        </button>
+
       </div>
+
+      <LifecycleDemoDrawer
+        open={demoOpen}
+        onClose={() => setDemoOpen(false)}
+        outcomeMode={demoMode}
+      />
 
       {/* Table card */}
       <div className="relative flex flex-col flex-1 min-h-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] overflow-hidden">
@@ -243,7 +350,7 @@ export default function WorkflowsPage() {
 
         {/* Horizontal scroll wrapper */}
         <div className="flex-1 min-h-0 overflow-x-auto flex flex-col">
-          <div className="min-w-[720px] flex flex-col flex-1 min-h-0">
+          <div className="min-w-180 flex flex-col flex-1 min-h-0">
 
             {/* Column headers */}
             <div className={`grid ${COLS} px-6 py-4 shrink-0`}>
@@ -254,9 +361,21 @@ export default function WorkflowsPage() {
 
             {/* Rows */}
             <div className="flex flex-col overflow-y-auto min-h-0">
-              {filtered.length === 0 ? (
+              {loading ? (
                 <div className="flex flex-1 items-center justify-center py-16 border-t border-dashed border-[#272727]">
-                  <span className="text-[#5a5a5a] text-[13px]">No workflows match your filters</span>
+                  <span className="text-[#5a5a5a] text-[13px]">Loading from Sui testnet…</span>
+                </div>
+              ) : error ? (
+                <div className="flex flex-1 items-center justify-center py-16 border-t border-dashed border-[#272727]">
+                  <span className="text-[#f87171] text-[13px]">Failed to load: {error}</span>
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="flex flex-1 items-center justify-center py-16 border-t border-dashed border-[#272727]">
+                  <span className="text-[#5a5a5a] text-[13px]">
+                    {workflows.length === 0
+                      ? "No workflows yet — run `npm run lifecycle` to create one"
+                      : "No workflows match your filters"}
+                  </span>
                 </div>
               ) : (
                 filtered.map((w, i) => {
