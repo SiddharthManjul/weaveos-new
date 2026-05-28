@@ -11,33 +11,56 @@ import {
 
 // ─── All Quotes ──────────────────────────────────────────────────────────────
 
-type QuoteStatus = "Active" | "Archive";
+type QuoteStatus = "Active" | "Used" | "Expired";
 type DateRange   = "Last 7 Days" | "Last 30 Days" | "Last 90 Days" | "All Time";
 
 const quoteStatusConfig: Record<QuoteStatus, { bg: string; color: string }> = {
-  Active:  { bg: "rgba(74, 222, 128, 0.1)", color: "#4ade80" },
-  Archive: { bg: "rgba(107, 107, 107, 0.1)", color: "#6b6b6b" },
+  Active:  { bg: "rgba(74, 222, 128, 0.1)",  color: "#4ade80" },
+  Used:    { bg: "rgba(96, 165, 250, 0.1)",  color: "#60a5fa" },
+  Expired: { bg: "rgba(107, 107, 107, 0.1)", color: "#6b6b6b" },
 };
 
-const ALL_QUOTE_STATUSES: Array<QuoteStatus | "All"> = ["All", "Active", "Archive"];
+const ALL_QUOTE_STATUSES: Array<QuoteStatus | "All"> = ["All", "Active", "Used", "Expired"];
 const DATE_RANGES: DateRange[] = ["Last 7 Days", "Last 30 Days", "Last 90 Days", "All Time"];
 
 type Quote = { id: string; customer: string; amount: string; status: QuoteStatus; time: string };
 
-const quotes: Quote[] = [
-  { id: "qt_e4rgffg44fg4g44", customer: "Acme Inc",                  amount: "$23.53", status: "Active",  time: "3 mins ago" },
-  { id: "qt_e4rgffg44fg4g44", customer: "Beco – Beta Corporation",   amount: "$0.14",  status: "Active",  time: "3 mins ago" },
-  { id: "qt_e4rgffg44fg4g44", customer: "Base – Base Corporation",   amount: "$1.14",  status: "Archive", time: "3 mins ago" },
-  { id: "qt_e4rgffg44fg4g44", customer: "Nation – National Group",   amount: "$0.48",  status: "Active",  time: "3 mins ago" },
-  { id: "qt_e4rgffg44fg4g44", customer: "NAW – Nationwide Corp.",    amount: "$0.24",  status: "Active",  time: "3 mins ago" },
-  { id: "qt_e4rgffg44fg4g44", customer: "Jaco – Jaguar Corporation", amount: "$0.08",  status: "Archive", time: "3 mins ago" },
-  { id: "qt_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  amount: "$0.00",  status: "Active",  time: "3 mins ago" },
-  { id: "qt_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  amount: "$0.08",  status: "Active",  time: "3 mins ago" },
-  { id: "qt_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  amount: "$0.00",  status: "Active",  time: "3 mins ago" },
-  { id: "qt_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  amount: "$0.00",  status: "Active",  time: "3 mins ago" },
-  { id: "qt_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  amount: "$0.00",  status: "Active",  time: "3 mins ago" },
-  { id: "qt_e4rgffg44fg4g44", customer: "Yates – Yates Enterprise",  amount: "$0.00",  status: "Active",  time: "3 mins ago" },
-];
+type ApiQuote = {
+  id: string;
+  customer: string;
+  price: number;
+  status: QuoteStatus;
+  createdAtMs: number;
+};
+
+function formatSuiAmt(base: number): string {
+  if (!base) return "0 SUI";
+  return `${(base / 1e9).toLocaleString(undefined, { maximumFractionDigits: 4 })} SUI`;
+}
+function shortAddr(addr: string): string {
+  if (!addr) return "";
+  return addr.length > 14 ? `${addr.slice(0, 8)}…${addr.slice(-4)}` : addr;
+}
+function relTime(ts: number): string {
+  if (!ts) return "—";
+  const d = Date.now() - ts;
+  const s = Math.floor(d / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min${m === 1 ? "" : "s"} ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} hr${h === 1 ? "" : "s"} ago`;
+  return `${Math.floor(h / 24)} day(s) ago`;
+}
+function toQuoteRow(q: ApiQuote): Quote {
+  return {
+    id: q.id,
+    customer: shortAddr(q.customer),
+    amount: formatSuiAmt(q.price),
+    status: q.status,
+    time: relTime(q.createdAtMs),
+  };
+}
 
 function PillDropdown<T extends string>({
   value, options, onChange, renderValue, renderOption, mobileIcon,
@@ -73,7 +96,7 @@ function PillDropdown<T extends string>({
         <HugeiconsIcon icon={ArrowDownIcon} size={12} color="#5a5a5a" strokeWidth={2} className={`transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1.5 bg-[#1a1a1a] border border-[#272727] rounded-xl overflow-hidden shadow-2xl z-50 min-w-[160px]">
+        <div className="absolute top-full left-0 mt-1.5 bg-[#1a1a1a] border border-[#272727] rounded-xl overflow-hidden shadow-2xl z-50 min-w-40">
           {options.map((opt) => (
             <button key={opt} onClick={() => { onChange(opt); setOpen(false); }}
               className={`flex items-center gap-2.5 w-full px-4 py-2.5 text-left text-[13px] transition-colors ${
@@ -95,9 +118,9 @@ function ConfirmModal({ open, onClose, onConfirm, title, description, confirmLab
 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center">
+    <div className="fixed inset-0 z-200 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 bg-[#171718] border border-[#272727] rounded-2xl p-6 w-[400px] flex flex-col gap-4 shadow-2xl">
+      <div className="relative z-10 bg-[#171718] border border-[#272727] rounded-2xl p-6 w-100 flex flex-col gap-4 shadow-2xl">
         <h2 className="text-[#d4d4d4] text-[15px] font-semibold">{title}</h2>
         <p className="text-[#6b6b6b] text-[13px] leading-relaxed">{description}</p>
         <div className="flex items-center justify-end gap-3 pt-1">
@@ -131,10 +154,35 @@ function AllQuotesTab() {
   const [dateRange, setDateRange]     = useState<DateRange>("Last 7 Days");
   const [archiveTarget, setArchiveTarget] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget]   = useState<number | null>(null);
+  const [quotes, setQuotes]           = useState<Quote[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/sui/quotes", { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const json = (await r.json()) as { quotes: ApiQuote[] };
+        if (!cancelled) {
+          setQuotes(json.quotes.map(toQuoteRow));
+          setError(null);
+        }
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = quotes.filter((q) => {
     const qry = search.toLowerCase();
-    const matchSearch = !qry || q.id.includes(qry) || q.customer.toLowerCase().includes(qry);
+    const matchSearch = !qry || q.id.toLowerCase().includes(qry) || q.customer.toLowerCase().includes(qry);
     const matchStatus = statusFilter === "All" || q.status === statusFilter;
     return matchSearch && matchStatus;
   });
@@ -180,7 +228,7 @@ function AllQuotesTab() {
 
         {/* Horizontal scroll wrapper */}
         <div className="flex-1 min-h-0 overflow-x-auto flex flex-col">
-          <div className="min-w-[520px] flex flex-col flex-1 min-h-0">
+          <div className="min-w-130 flex flex-col flex-1 min-h-0">
 
             {/* Header */}
             <div className={`grid ${Q_COLS} px-6 py-4 shrink-0`}>
@@ -191,9 +239,19 @@ function AllQuotesTab() {
 
             {/* Rows */}
             <div className="flex flex-col overflow-y-auto min-h-0">
-              {filtered.length === 0 ? (
+              {loading ? (
                 <div className="flex items-center justify-center py-16 border-t border-dashed border-[#272727]">
-                  <span className="text-[#5a5a5a] text-[13px]">No quotes match your filters</span>
+                  <span className="text-[#5a5a5a] text-[13px]">Loading from Sui testnet…</span>
+                </div>
+              ) : error ? (
+                <div className="flex items-center justify-center py-16 border-t border-dashed border-[#272727]">
+                  <span className="text-[#f87171] text-[13px]">Failed to load: {error}</span>
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="flex items-center justify-center py-16 border-t border-dashed border-[#272727]">
+                  <span className="text-[#5a5a5a] text-[13px]">
+                    {quotes.length === 0 ? "No quotes on chain yet" : "No quotes match your filters"}
+                  </span>
                 </div>
               ) : filtered.map((q, i) => {
                 const { bg, color } = quoteStatusConfig[q.status];
@@ -432,7 +490,7 @@ console.log(workflow.id) // wf_xxxxxxxx`;
         <div className="flex flex-col xl:flex-row flex-1 min-h-0 gap-6 xl:gap-8">
 
           {/* ── Left: form ── */}
-          <div className="xl:flex-[5] flex flex-col gap-5 overflow-y-auto min-h-0">
+          <div className="xl:flex-5 flex flex-col gap-5 overflow-y-auto min-h-0">
 
             <div className="flex flex-col gap-2">
               <Label>Pricing Model</Label>
@@ -491,7 +549,7 @@ console.log(workflow.id) // wf_xxxxxxxx`;
           </div>
 
           {/* ── Right: preview panels ── */}
-          <div className="xl:flex-[6] hidden xl:flex flex-col gap-4 min-h-0 overflow-y-auto">
+          <div className="xl:flex-6 hidden xl:flex flex-col gap-4 min-h-0 overflow-y-auto">
 
             {/* Live Preview Code */}
             <div className="shrink-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] p-5 flex flex-col gap-3">
@@ -499,7 +557,7 @@ console.log(workflow.id) // wf_xxxxxxxx`;
                 <span className="text-[#a3a3a3] text-[13px] font-medium">Live Preview Code</span>
                 <CopyButton text={jsonPreview} />
               </div>
-              <div className="bg-[#0f0f0f] rounded-xl p-4 max-h-[240px] overflow-auto">
+              <div className="bg-[#0f0f0f] rounded-xl p-4 max-h-60 overflow-auto">
                 <pre className="text-[12px] font-mono text-[#a3a3a3] leading-relaxed whitespace-pre">
                   {jsonPreview}
                 </pre>
@@ -512,7 +570,7 @@ console.log(workflow.id) // wf_xxxxxxxx`;
                 <span className="text-[#a3a3a3] text-[13px] font-medium">SDK Snippet</span>
                 <CopyButton text={sdkSnippet} />
               </div>
-              <div className="bg-[#0f0f0f] rounded-xl p-4 max-h-[240px] overflow-auto">
+              <div className="bg-[#0f0f0f] rounded-xl p-4 max-h-60 overflow-auto">
                 <pre className="text-[12px] font-mono text-[#a3a3a3] leading-relaxed whitespace-pre">
                   {sdkSnippet}
                 </pre>
