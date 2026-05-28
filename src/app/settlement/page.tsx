@@ -34,41 +34,89 @@ type Settlement = {
   date: string;
 };
 
-const settlements: Settlement[] = [
-  { id: "st_a1b2c3d4e5", recipient: "Acme Inc",                  workflowId: "wf_e4rgffg44fg4g44", amount: "$306.60",  status: "Paid",       date: "May 15, 2026" },
-  { id: "st_f6g7h8i9j0", recipient: "Beco – Beta Corporation",   workflowId: "wf_c6d7e8f9g0h1i2", amount: "$87.60",   status: "Processing", date: "May 14, 2026" },
-  { id: "st_k1l2m3n4o5", recipient: "Nation – National Group",   workflowId: "wf_j3k4l5m6n7o8p9", amount: "$43.80",   status: "Pending",    date: "May 14, 2026" },
-  { id: "st_p6q7r8s9t0", recipient: "NAW – Nationwide Corp.",    workflowId: "wf_q0r1s2t3u4v5w6", amount: "$1,240.00", status: "Paid",      date: "May 13, 2026" },
-  { id: "st_u1v2w3x4y5", recipient: "Meridian Solutions",        workflowId: "wf_x7y8z9a0b1c2d3", amount: "$560.00",  status: "Paid",       date: "May 13, 2026" },
-  { id: "st_z6a7b8c9d0", recipient: "Crestfield Partners",       workflowId: "wf_e4f5g6h7i8j9k0", amount: "$2,100.00", status: "Processing", date: "May 12, 2026" },
-  { id: "st_e1f2g3h4i5", recipient: "Stratosphere Inc.",         workflowId: "wf_l1m2n3o4p5q6r7", amount: "$438.00",  status: "Pending",    date: "May 12, 2026" },
-  { id: "st_j6k7l8m9n0", recipient: "Jaco – Jaguar Corporation", workflowId: "wf_s8t9u0v1w2x3y4", amount: "$75.20",   status: "Paid",       date: "May 11, 2026" },
-  { id: "st_o5p6q7r8s9", recipient: "Pinewave Digital",          workflowId: "wf_z5a6b7c8d9e0f1", amount: "$184.50",  status: "Paid",       date: "May 11, 2026" },
-  { id: "st_t0u1v2w3x4", recipient: "Yates – Yates Enterprise",  workflowId: "wf_g2h3i4j5k6l7m8", amount: "$22.00",   status: "Pending",    date: "May 10, 2026" },
-];
+type ApiSettlement = {
+  id: string;
+  workflowId: string;
+  totalSettled: number;
+  platformFee: number;
+  settledAtMs: number;
+  splits: Array<{ recipient: string; amount: number; role: number }>;
+};
+
+function formatSuiAmt(base: number): string {
+  if (!base) return "0 SUI";
+  return `${(base / 1e9).toLocaleString(undefined, { maximumFractionDigits: 4 })} SUI`;
+}
+function shortAddr(addr: string): string {
+  if (!addr) return "";
+  return addr.length > 14 ? `${addr.slice(0, 8)}…${addr.slice(-4)}` : addr;
+}
+function dateLabel(ms: number): string {
+  if (!ms) return "—";
+  return new Date(ms).toLocaleString();
+}
+function settlementToRow(s: ApiSettlement): Settlement {
+  return {
+    id: s.id,
+    recipient: `Multi-party (${s.splits.length} recipients)`,
+    workflowId: s.workflowId,
+    amount: formatSuiAmt(s.totalSettled),
+    status: "Paid",
+    date: dateLabel(s.settledAtMs),
+  };
+}
 
 // ─── Multi-party split bar ────────────────────────────────────────────────────
 
-const SPLIT_SEGMENTS = [
-  { label: "Platform", pct: 70, amount: "$306.60", color: "#3064FF",  textColor: "#ffffff" },
-  { label: "Provider", pct: 20, amount: "$87.60",  color: "#fbbf24",  textColor: "#0a0a0a" },
-  { label: "Tax",      pct: 10, amount: "$43.80",  color: "#9ca3af",  textColor: "#0a0a0a" },
+type SplitSegment = {
+  label: string;
+  pct: number;
+  amount: string;
+  color: string;
+  textColor: string;
+};
+
+const PLACEHOLDER_SEGMENTS: SplitSegment[] = [
+  { label: "Agent company", pct: 73, amount: "0.073 SUI", color: "#3064FF",  textColor: "#ffffff" },
+  { label: "Model provider", pct: 20, amount: "0.020 SUI",  color: "#a78bfa",  textColor: "#ffffff" },
+  { label: "Tool",      pct: 2, amount: "0.002 SUI",  color: "#fbbf24",  textColor: "#0a0a0a" },
+  { label: "Platform fee", pct: 5, amount: "0.005 SUI", color: "#f87171", textColor: "#ffffff" },
 ];
 
-function SplitBar() {
+const ROLE_LABEL_SETTLE = [
+  "Agent company", "Model provider", "Tool", "Human", "Platform fee",
+];
+const ROLE_COLOR_SETTLE = ["#3064FF", "#a78bfa", "#fbbf24", "#22d3ee", "#f87171"];
+
+function segmentsFromSettlement(s: ApiSettlement | undefined): SplitSegment[] {
+  if (!s || s.splits.length === 0) return PLACEHOLDER_SEGMENTS;
+  return s.splits.map((sp) => ({
+    label: ROLE_LABEL_SETTLE[sp.role] ?? `Role ${sp.role}`,
+    pct: s.totalSettled === 0 ? 0 : Math.round((sp.amount / s.totalSettled) * 1000) / 10,
+    amount: formatSuiAmt(sp.amount),
+    color: ROLE_COLOR_SETTLE[sp.role] ?? "#9ca3af",
+    textColor: [3, 0].includes(sp.role) ? "#ffffff" : sp.role === 2 ? "#0a0a0a" : "#ffffff",
+  }));
+}
+
+function SplitBar({ settlement }: { settlement?: ApiSettlement }) {
+  const segments = segmentsFromSettlement(settlement);
+  const isReal = !!settlement;
+  const headerAmount = settlement ? formatSuiAmt(settlement.totalSettled) : "0.1 SUI";
+  const headerLabel = settlement
+    ? `Settlement ${shortAddr(settlement.id)} · workflow ${shortAddr(settlement.workflowId)}`
+    : "Example settlement (no on-chain settlements yet)";
   return (
     <div className="shrink-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] px-6 pt-5 pb-5">
       {/* Header */}
       <p className="text-[#a3a3a3] text-[11px] font-semibold tracking-widest uppercase mb-0.5">
-        Multi-Party Split — Example: $438.00
+        Multi-Party Split{isReal ? "" : " — Example"}: {headerAmount}
       </p>
-      <p className="text-[#5a5a5a] text-[13px] mb-4">
-        Settlement st_a1b2c3 · Beacon Health
-      </p>
+      <p className="text-[#5a5a5a] text-[13px] mb-4">{headerLabel}</p>
 
       {/* Bar */}
       <div className="flex rounded-xl overflow-hidden mb-3" style={{ height: 52 }}>
-        {SPLIT_SEGMENTS.map((s) => (
+        {segments.map((s) => (
           <div
             key={s.label}
             className="flex items-center justify-center"
@@ -83,7 +131,7 @@ function SplitBar() {
 
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-        {SPLIT_SEGMENTS.map((s) => (
+        {segments.map((s) => (
           <div key={s.label} className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
             <span className="text-[#d4d4d4] text-[13px] font-medium">{s.label}</span>
@@ -112,7 +160,7 @@ function Tooltip({ label, children }: { label: string; children: React.ReactNode
       </div>
       {coords && (
         <div
-          className="pointer-events-none fixed z-[9999] -translate-x-1/2 -translate-y-full px-2 py-1 bg-[#1e1e1e] border border-[#2a2a2a] rounded-md text-[11px] text-[#a3a3a3] whitespace-nowrap"
+          className="pointer-events-none fixed z-9999 -translate-x-1/2 -translate-y-full px-2 py-1 bg-[#1e1e1e] border border-[#2a2a2a] rounded-md text-[11px] text-[#a3a3a3] whitespace-nowrap"
           style={{ left: coords.x, top: coords.y - 8 }}
         >
           {label}
@@ -159,7 +207,7 @@ function PillDropdown<T extends string>({
           className={`transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1.5 bg-[#1a1a1a] border border-[#272727] rounded-xl overflow-hidden shadow-2xl z-50 min-w-[160px]">
+        <div className="absolute top-full left-0 mt-1.5 bg-[#1a1a1a] border border-[#272727] rounded-xl overflow-hidden shadow-2xl z-50 min-w-40">
           {options.map((opt) => (
             <button key={opt} onClick={() => { onChange(opt); setOpen(false); }}
               className={`flex items-center gap-2.5 w-full px-4 py-2.5 text-left text-[13px] transition-colors ${
@@ -183,20 +231,41 @@ function PaymentsTab() {
   const [search, setSearch]           = useState("");
   const [statusFilter, setStatusFilter] = useState<SettlementStatus | "All">("All");
   const [dateRange, setDateRange]     = useState<DateRange>("Last 7 Days");
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [raw, setRaw]                 = useState<ApiSettlement[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/sui/settlements", { cache: "no-store" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const json = (await r.json()) as { settlements: ApiSettlement[] };
+        if (!cancelled) {
+          setRaw(json.settlements);
+          setSettlements(json.settlements.map(settlementToRow));
+          setError(null);
+        }
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function copyId(id: string) {
-    const el = document.createElement("textarea");
-    el.value = id;
-    el.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
-    document.body.appendChild(el);
-    el.focus(); el.select();
-    document.execCommand("copy");
-    document.body.removeChild(el);
+    navigator.clipboard.writeText(id);
   }
 
   const filtered = settlements.filter((s) => {
     const q = search.toLowerCase();
-    const matchSearch = !q || s.id.includes(q) || s.recipient.toLowerCase().includes(q);
+    const matchSearch = !q || s.id.toLowerCase().includes(q) || s.workflowId.toLowerCase().includes(q);
     const matchStatus = statusFilter === "All" || s.status === statusFilter;
     return matchSearch && matchStatus;
   });
@@ -204,7 +273,7 @@ function PaymentsTab() {
   return (
     <>
       {/* Split bar */}
-      <SplitBar />
+      <SplitBar settlement={raw[0]} />
 
       {/* Filter bar */}
       <div className="flex items-center gap-3 shrink-0 flex-wrap">
@@ -244,12 +313,12 @@ function PaymentsTab() {
       </div>
 
       {/* Table */}
-      <div className="relative flex flex-col min-h-[400px] lg:flex-1 lg:min-h-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] overflow-hidden">
+      <div className="relative flex flex-col min-h-100 lg:flex-1 lg:min-h-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] overflow-hidden">
         <div className="md:hidden absolute inset-y-0 right-0 w-10 z-10 pointer-events-none rounded-r-[20px]" style={{ background: "linear-gradient(to right, transparent, #171718)" }} />
 
         {/* Horizontal scroll wrapper */}
         <div className="flex-1 min-h-0 overflow-x-auto flex flex-col">
-          <div className="min-w-[620px] flex flex-col flex-1 min-h-0">
+          <div className="min-w-155 flex flex-col flex-1 min-h-0">
 
             {/* Header */}
             <div className={`grid ${COLS} px-6 py-4 shrink-0`}>
@@ -260,9 +329,21 @@ function PaymentsTab() {
 
             {/* Rows */}
             <div className="flex flex-col overflow-y-auto min-h-0">
-              {filtered.length === 0 ? (
+              {loading ? (
                 <div className="flex items-center justify-center py-16 border-t border-dashed border-[#272727]">
-                  <span className="text-[#5a5a5a] text-[13px]">No settlements match your filters</span>
+                  <span className="text-[#5a5a5a] text-[13px]">Loading from Sui testnet…</span>
+                </div>
+              ) : error ? (
+                <div className="flex items-center justify-center py-16 border-t border-dashed border-[#272727]">
+                  <span className="text-[#f87171] text-[13px]">Failed to load: {error}</span>
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="flex items-center justify-center py-16 border-t border-dashed border-[#272727]">
+                  <span className="text-[#5a5a5a] text-[13px]">
+                    {settlements.length === 0
+                      ? "No settlements on chain yet"
+                      : "No settlements match your filters"}
+                  </span>
                 </div>
               ) : (
                 filtered.map((s, i) => {
@@ -348,8 +429,8 @@ function EscrowConfirmModal({
   const isExtend   = action === "extend";
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#171718] border border-[#272727] rounded-2xl p-6 w-[460px] flex flex-col gap-5 shadow-2xl">
+    <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-[#171718] border border-[#272727] rounded-2xl p-6 w-115 flex flex-col gap-5 shadow-2xl">
         <h2 className="text-[#d4d4d4] text-[15px] font-semibold">
           {isExtend ? "Extend Escrow Window" : "Release Escrow Early"}
         </h2>
@@ -447,12 +528,12 @@ function EscrowTab() {
         />
       </div>
 
-      <div className="relative flex flex-col min-h-[400px] lg:flex-1 lg:min-h-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] overflow-hidden">
+      <div className="relative flex flex-col min-h-100 lg:flex-1 lg:min-h-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] overflow-hidden">
         <div className="md:hidden absolute inset-y-0 right-0 w-10 z-10 pointer-events-none rounded-r-[20px]" style={{ background: "linear-gradient(to right, transparent, #171718)" }} />
 
         {/* Horizontal scroll wrapper */}
         <div className="flex-1 min-h-0 overflow-x-auto flex flex-col">
-          <div className="min-w-[480px] flex flex-col flex-1 min-h-0">
+          <div className="min-w-120 flex flex-col flex-1 min-h-0">
 
             {/* Header */}
             <div className={`grid ${E_COLS} px-6 py-4 shrink-0`}>
@@ -547,8 +628,8 @@ function DisputeModal({ action, row, onClose }: { action: DisputeAction; row: Di
   const canRefund = input === row.workflowId;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className={`bg-[#171718] border border-[#272727] rounded-2xl shadow-2xl flex flex-col gap-5 p-6 ${action === "proof" ? "w-[560px]" : "w-[460px]"}`}>
+    <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className={`bg-[#171718] border border-[#272727] rounded-2xl shadow-2xl flex flex-col gap-5 p-6 ${action === "proof" ? "w-140" : "w-115"}`}>
 
         {action === "proof" && <>
           <div className="flex items-center justify-between">
@@ -702,12 +783,12 @@ function DisputesTab() {
       </div>
 
       {/* Table */}
-      <div className="relative flex flex-col min-h-[400px] lg:flex-1 lg:min-h-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] overflow-hidden">
+      <div className="relative flex flex-col min-h-100 lg:flex-1 lg:min-h-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] overflow-hidden">
         <div className="md:hidden absolute inset-y-0 right-0 w-10 z-10 pointer-events-none rounded-r-[20px]" style={{ background: "linear-gradient(to right, transparent, #171718)" }} />
 
         {/* Horizontal scroll wrapper */}
         <div className="flex-1 min-h-0 overflow-x-auto flex flex-col">
-          <div className="min-w-[680px] flex flex-col flex-1 min-h-0">
+          <div className="min-w-170 flex flex-col flex-1 min-h-0">
 
             <div className={`grid ${D_COLS} px-6 py-4 shrink-0`}>
               {["Workflow ID", "Customer", "Disputed Amount", "Model", "Tool", "Created", "Actions"].map((h) => (
