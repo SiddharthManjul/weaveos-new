@@ -238,7 +238,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // === 5. Compose AttestationPayload ===
-  const timestampMs = BigInt(Date.now());
+  // Backdate the timestamp by 60s. Sui's Clock object updates with consensus
+  // rounds and lags wall clock by a few seconds; if we sign with the *current*
+  // wall clock the Move check `payload.timestamp_ms <= clock.now` races. 60s
+  // is a safe buffer that's still well within the dispute-window invariant.
+  const timestampMs = BigInt(Date.now() - 60_000);
   const payload: AttestationPayload = {
     workflow_id: body.workflowId,
     outcome_success: success,
