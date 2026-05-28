@@ -9,7 +9,6 @@ import {
   LegalDocumentIcon,
   BankIcon,
   TrendingUpDownIcon,
-  PresentationBarChartIcon,
   UserGroupIcon,
   DeveloperIcon,
   SettingsIcon,
@@ -45,7 +44,9 @@ const navSections: NavSection[] = [
     label: "Analyse",
     items: [
       { name: "Margin", icon: TrendingUpDownIcon, href: "/margin" },
-      { name: "Pricing Intel", icon: PresentationBarChartIcon, href: "/pricing-intel" },
+      // Pricing Intel hidden until Phase 2 — needs cross-tenant pricing
+      // benchmarks that don't exist at hackathon scale. The page still works
+      // at /pricing-intel and renders a Coming Soon placeholder.
       { name: "Customers", icon: UserGroupIcon, href: "/customers" },
     ],
   },
@@ -70,9 +71,9 @@ export function Sidebar({
   return (
     <aside
       className={`flex flex-col bg-[#070707] shrink-0
-        fixed inset-y-0 left-0 z-[60] w-[260px] transition-transform duration-300
+        fixed inset-y-0 left-0 z-60 w-65 transition-transform duration-300
         ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
-        md:static md:w-[175px] md:translate-x-0 md:min-h-screen`}
+        md:static md:w-43.75 md:translate-x-0 md:min-h-screen`}
     >
       {/* Logo + mobile close */}
       <div className="flex items-center justify-between px-4 pt-5 pb-6">
@@ -98,7 +99,7 @@ export function Sidebar({
               <Link
                 key={item.name}
                 href={item.href}
-                className={`flex items-center gap-2 px-2 py-3 md:py-[7px] rounded-[20px] text-[14px] w-full transition-colors ${
+                className={`flex items-center gap-2 px-2 py-3 md:py-1.75 rounded-[20px] text-[14px] w-full transition-colors ${
                   pathname === item.href
                     ? "bg-[#0d1e3d] text-[#3064FF]"
                     : "text-[#6b6b6b] hover:text-[#a3a3a3] hover:bg-[#141414]"
@@ -121,7 +122,7 @@ export function Sidebar({
       <div className="mx-2.5 border-t border-dashed border-[#272727] mb-1" />
       <div className="flex items-center justify-between px-3 py-3 mx-1 mb-2 rounded-lg">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-[26px] h-[26px] rounded-full bg-[#0d2a8a] flex items-center justify-center shrink-0">
+          <div className="w-6.5 h-6.5 rounded-full bg-[#0d2a8a] flex items-center justify-center shrink-0">
             <span className="text-white text-[11px] font-semibold">P</span>
           </div>
           <span className="text-[#d4d4d4] text-[13px] font-medium truncate">
