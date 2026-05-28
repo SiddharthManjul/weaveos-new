@@ -12,6 +12,8 @@ import {
   CopyIcon, ArrowLeft01Icon, ArrowRightDoubleIcon,
 } from "@hugeicons/core-free-icons";
 
+import { ZkLoginButton } from "@/components/ZkLoginButton";
+
 // ─── Page meta ────────────────────────────────────────────────────────────────
 
 type IconType = React.ComponentProps<typeof HugeiconsIcon>["icon"];
@@ -127,10 +129,10 @@ function SpotlightModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-start justify-center pt-[18vh] bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-9999 flex items-start justify-center pt-[18vh] bg-black/50 backdrop-blur-sm"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-[600px] bg-[#141414] border border-[#272727] rounded-2xl shadow-2xl overflow-hidden">
+      <div className="w-150 bg-[#141414] border border-[#272727] rounded-2xl shadow-2xl overflow-hidden">
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-[#1e1e1e]">
           <HugeiconsIcon icon={SearchIcon} size={16} color="#5a5a5a" strokeWidth={1.5} />
@@ -147,7 +149,7 @@ function SpotlightModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Results */}
-        <div className="max-h-[420px] overflow-y-auto py-2">
+        <div className="max-h-105 overflow-y-auto py-2">
           {results.length === 0 ? (
             <div className="flex items-center justify-center py-10">
               <span className="text-[#3a3a3a] text-[13px]">No results for &ldquo;{query}&rdquo;</span>
@@ -216,7 +218,7 @@ function NotificationsDropdown({ onClose, upward }: { onClose: () => void; upwar
   return (
     <div
       ref={ref}
-      className={`absolute right-0 w-[320px] md:w-[340px] bg-[#141414] border border-[#272727] rounded-2xl shadow-2xl overflow-hidden z-50 ${
+      className={`absolute right-0 w-[320px] md:w-85 bg-[#141414] border border-[#272727] rounded-2xl shadow-2xl overflow-hidden z-50 ${
         upward ? "bottom-full mb-2" : "top-full mt-2"
       }`}
     >
@@ -228,7 +230,7 @@ function NotificationsDropdown({ onClose, upward }: { onClose: () => void; upwar
           </span>
         )}
       </div>
-      <div className="flex flex-col max-h-[360px] overflow-y-auto">
+      <div className="flex flex-col max-h-90 overflow-y-auto">
         {NOTIFICATIONS.map((n) => (
           <div
             key={n.id}
@@ -294,7 +296,7 @@ export function TopNav({ onMenuClick }: { onMenuClick?: () => void }) {
               </Link>
               <span className="hidden md:inline text-[#2a2a2a] text-[13px] shrink-0">/</span>
               <div className="flex items-center gap-2.5 min-w-0">
-                <span className="font-mono text-[13px] font-semibold text-[#d4d4d4] truncate max-w-[110px] md:max-w-none">
+                <span className="font-mono text-[13px] font-semibold text-[#d4d4d4] truncate max-w-27.5 md:max-w-none">
                   {wfId}
                 </span>
                 <button
@@ -334,6 +336,11 @@ export function TopNav({ onMenuClick }: { onMenuClick?: () => void }) {
               Sui Explorer
             </button>
           )}
+
+          {/* zkLogin sign-in (desktop only) */}
+          <div className="hidden md:block">
+            <ZkLoginButton />
+          </div>
 
           {/* Desktop search */}
           <button
