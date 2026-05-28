@@ -65,7 +65,7 @@ export function FaqSection({ questions, heading, subtitle }: {
 
           {/* Subtitle */}
           <p className="text-[16px] leading-relaxed" style={{ color: "#808080" }}>
-            {subtitle ?? <>See the info below or drop us a line via the{" "}<span className="text-white font-semibold">support</span> page.</>}
+            {subtitle ?? <>See the info below or drop us a line via the{" "}<a href="/contact" className="text-white font-semibold no-underline">support</a> page.</>}
           </p>
         </div>
 
