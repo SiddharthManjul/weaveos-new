@@ -1,0 +1,52 @@
+{
+  "name": "@weaveos/sdk",
+  "version": "0.1.0-alpha.1",
+  "description": "TypeScript SDK for weaveOS — AI-native billing & outcome settlement on Sui",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./dsl": {
+      "types": "./dist/dsl.d.ts",
+      "import": "./dist/dsl.js"
+    },
+    "./bcs": {
+      "types": "./dist/bcs.d.ts",
+      "import": "./dist/bcs.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "sui",
+    "ai",
+    "billing",
+    "blockchain",
+    "outcome-pricing",
+    "weaveos"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@mysten/sui": "^2.0.0"
+  },
+  "dependencies": {
+    "@noble/ed25519": "^3.0.0",
+    "@noble/hashes": "^2.0.0",
+    "ajv": "^8.0.0",
+    "ajv-formats": "^3.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
