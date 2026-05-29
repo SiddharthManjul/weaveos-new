@@ -32,13 +32,13 @@ export function HeroSection() {
   return (
     <section
       ref={sectionRef}
-      className="relative z-10 w-full overflow-hidden flex flex-col sm:block"
+      className="relative z-10 w-full overflow-hidden"
       style={{ minHeight: "100svh" }}
     >
 
       {/* Left: text + CTA */}
-      {/* Mobile: my-auto centres vertically inside the flex section. Desktop: fixed pt-20/pb-28. */}
-      <div className="relative z-10 max-w-[1200px] mx-auto px-5 py-16 sm:pt-20 sm:pb-28 my-auto sm:my-0">
+      {/* Mobile: pt-[36svh] sits content just above vertical centre. Desktop: fixed pt-20. */}
+      <div className="relative z-10 max-w-[1200px] mx-auto px-5 pt-[42svh] pb-16 sm:pt-20 sm:pb-28">
         <div className="max-w-[480px]">
 
           <h1
