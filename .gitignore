@@ -73,3 +73,5 @@ backend/move/build/
 backend/move/traces/
 backend/move/.trace
 backend/move/.coverage*
+
+.claude/worktrees/
