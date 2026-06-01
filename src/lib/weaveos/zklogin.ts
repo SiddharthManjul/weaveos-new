@@ -13,7 +13,11 @@ export { weaveosConfig };
 export const ZKLOGIN_CONFIG = {
   /** Google OAuth Client ID — public, safe to expose to the browser. */
   googleClientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "",
-  /** Mysten's public prover for testnet. */
+  /** Mysten's public prover. `prover-dev.mystenlabs.com` is what we use:
+   *  it accepts ANY Google OAuth client ID (the production prover requires
+   *  apps to be whitelisted with Mysten Labs), AND its proofs verify on
+   *  testnet — the dev/testnet provers share a proving key. Mainnet uses a
+   *  separate proving key that only the whitelisted production prover serves. */
   proverUrl:
     process.env.NEXT_PUBLIC_ZKLOGIN_PROVER_URL ??
     "https://prover-dev.mystenlabs.com/v1",
