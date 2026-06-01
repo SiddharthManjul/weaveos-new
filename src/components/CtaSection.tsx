@@ -4,40 +4,7 @@
    Right: visual placeholder (user will populate)
    ───────────────────────────────────────────────────────────────── */
 
-function CtaButton() {
-  return (
-    <a
-      href="/dashboard"
-      className="group relative self-start flex items-center gap-2 sm:gap-3 rounded-full overflow-hidden
-                 pt-[6px] pb-[6px] pl-[14px] pr-[3px]
-                 sm:pt-[9px] sm:pb-[9px] sm:pl-5 sm:pr-[3px]"
-      style={{ background: "#3064FF", border: "2px solid #3064FF" }}
-    >
-      <span
-        className="absolute right-[3px] top-1/2 -translate-y-1/2
-                   w-[26px] h-[26px] sm:w-[32px] sm:h-[32px]
-                   rounded-full bg-black scale-0 group-hover:scale-[14]
-                   transition-transform duration-500 ease-in-out"
-        aria-hidden="true"
-      />
-      <span className="relative z-10 text-white font-semibold text-[12px] sm:text-[14px]">
-        Request Access
-      </span>
-      <span className="relative z-10 w-[26px] h-[26px] sm:w-[32px] sm:h-[32px] rounded-full flex items-center justify-center shrink-0 bg-black">
-        <svg
-          className="transition-transform duration-500 group-hover:-rotate-45"
-          width="9" height="9" viewBox="0 0 11 11" fill="none"
-        >
-          <path
-            d="M2 5.5h7M5.5 2 9 5.5 5.5 9"
-            stroke="white" strokeWidth="1.5"
-            strokeLinecap="round" strokeLinejoin="round"
-          />
-        </svg>
-      </span>
-    </a>
-  );
-}
+import { RequestAccessButton } from "@/components/RequestAccessButton";
 
 export function CtaSection() {
   return (
@@ -68,7 +35,9 @@ export function CtaSection() {
               Quote, control, and track margin before agents burn money.
             </p>
 
-            <CtaButton />
+            <div className="self-start">
+              <RequestAccessButton size="sm" />
+            </div>
           </div>
 
           {/* ── Right: visual placeholder ─────────────────────────
