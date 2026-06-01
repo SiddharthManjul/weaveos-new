@@ -121,30 +121,15 @@ export function LifecycleDemoDrawer({
     setRunning(true);
     (async () => {
       try {
-        // If the user is signed in via zkLogin, attach the session so the
-        // lifecycle is signed by their ephemeral key + zkProof. Otherwise
-        // the server falls back to the env-var customer.
-        let zkLoginSession: unknown = undefined;
-        try {
-          const raw = localStorage.getItem("weaveos.zklogin.session");
-          if (raw) {
-            const s = JSON.parse(raw) as {
-              ephemeralPrivkey: string;
-              suiAddress: string;
-              zkProofInputs: unknown;
-              maxEpoch: number;
-            };
-            zkLoginSession = {
-              ephemeralPrivkey: s.ephemeralPrivkey,
-              suiAddress: s.suiAddress,
-              zkProofInputs: s.zkProofInputs,
-              maxEpoch: s.maxEpoch,
-            };
-          }
-        } catch {
-          // If localStorage is unavailable or session is malformed, just
-          // proceed without zkLogin.
-        }
+        // zkLogin tx signing is currently disabled — Mysten's public dev
+        // prover produces proofs that fail Groth16 verification on testnet,
+        // and the production prover requires audience whitelisting. Until we
+        // self-host the prover, the lifecycle runs signed by the env-var
+        // customer keypair on the server. The user's Google identity still
+        // gates access and shows in the sidebar; only the on-chain customer
+        // address is the env-var one. The unused imports below stay so we
+        // can flip the flag back on once a working prover is in place.
+        const zkLoginSession: unknown = undefined;
 
         const resp = await fetch("/api/demo/run-lifecycle", {
           method: "POST",
