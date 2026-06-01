@@ -7,8 +7,15 @@
 // The indexer cron refreshes every hour; we also trigger it manually from
 // the "Refresh indexer" button on /settings and (in the future) after each
 // /api/demo/run-lifecycle completes.
+//
+// Per-tenant scoping: every read accepts an optional `customer` filter (a
+// Sui address). When set, the query restricts itself to that customer's data.
+// When omitted, behavior is the legacy unscoped read — kept available for
+// keeper/indexer/system jobs that legitimately need cross-tenant visibility.
+// API routes always pass the current user's address; never call these
+// functions unscoped from a request handler.
 
-import { sql, desc, eq, and, ne } from "drizzle-orm";
+import { sql, desc, eq, and, inArray } from "drizzle-orm";
 
 import {
   db,
@@ -18,7 +25,7 @@ import {
   indexedDisputes,
 } from "./index";
 
-const STATUS_NAMES = ["Quoted", "Executing", "Verified", "Settled", "Disputed", "Refunded"];
+type ScopedOpts = { limit?: number; customer?: string };
 
 // === Workflow ===
 
@@ -40,12 +47,15 @@ export type WorkflowSummary = {
   updatedAtMs: number;
 };
 
-export async function listWorkflows(opts?: { limit?: number }): Promise<WorkflowSummary[]> {
-  const rows = await db()
+export async function listWorkflows(opts?: ScopedOpts): Promise<WorkflowSummary[]> {
+  const q = db()
     .select()
     .from(indexedWorkflows)
     .orderBy(desc(indexedWorkflows.createdAtMs))
     .limit(opts?.limit ?? 50);
+  const rows = opts?.customer
+    ? await q.where(eq(indexedWorkflows.customer, opts.customer.toLowerCase()))
+    : await q;
   return rows.map((r) => ({
     id: r.id,
     customer: r.customer,
@@ -80,17 +90,23 @@ export type QuoteListItem = {
   status: "Active" | "Used" | "Expired";
 };
 
-export async function listQuotes(opts?: { limit?: number }): Promise<QuoteListItem[]> {
-  const quotes = await db()
+export async function listQuotes(opts?: ScopedOpts): Promise<QuoteListItem[]> {
+  const baseQ = db()
     .select()
     .from(indexedQuotes)
     .orderBy(desc(indexedQuotes.createdAtMs))
     .limit(opts?.limit ?? 50);
+  const quotes = opts?.customer
+    ? await baseQ.where(eq(indexedQuotes.customer, opts.customer.toLowerCase()))
+    : await baseQ;
 
-  // Compute "used" via a join against indexed_workflows.
-  const workflowQuoteIds = await db()
-    .select({ quoteId: indexedWorkflows.quoteId })
-    .from(indexedWorkflows);
+  // Compute "used" via a join against indexed_workflows. When scoped, restrict
+  // the workflow scan to the same customer so a foreign workflow that happens
+  // to reference our quote can't flip its status.
+  const wfQ = db().select({ quoteId: indexedWorkflows.quoteId }).from(indexedWorkflows);
+  const workflowQuoteIds = opts?.customer
+    ? await wfQ.where(eq(indexedWorkflows.customer, opts.customer.toLowerCase()))
+    : await wfQ;
   const usedSet = new Set(
     workflowQuoteIds.map((w) => w.quoteId).filter((x): x is string => x != null),
   );
@@ -129,7 +145,34 @@ export type SettlementSummary = {
   splits: Array<{ recipient: string; amount: number; role: number }>;
 };
 
-export async function listSettlements(opts?: { limit?: number }): Promise<SettlementSummary[]> {
+export async function listSettlements(opts?: ScopedOpts): Promise<SettlementSummary[]> {
+  // Settlements don't carry a customer column directly — they're joined via
+  // workflowId. When scoped we restrict to settlements whose workflow is owned
+  // by the requested customer.
+  if (opts?.customer) {
+    const customer = opts.customer.toLowerCase();
+    const myWorkflowIds = (
+      await db()
+        .select({ id: indexedWorkflows.id })
+        .from(indexedWorkflows)
+        .where(eq(indexedWorkflows.customer, customer))
+    ).map((r) => r.id);
+    if (myWorkflowIds.length === 0) return [];
+    const rows = await db()
+      .select()
+      .from(indexedSettlements)
+      .where(inArray(indexedSettlements.workflowId, myWorkflowIds))
+      .orderBy(desc(indexedSettlements.settledAtMs))
+      .limit(opts?.limit ?? 50);
+    return rows.map((r) => ({
+      id: r.id,
+      workflowId: r.workflowId,
+      totalSettled: r.totalSettled,
+      platformFee: r.platformFee,
+      settledAtMs: r.settledAtMs,
+      splits: r.splits,
+    }));
+  }
   const rows = await db()
     .select()
     .from(indexedSettlements)
@@ -155,7 +198,32 @@ export type DisputeEventRow = {
   timestampMs: number;
 };
 
-export async function listDisputes(opts?: { limit?: number }): Promise<DisputeEventRow[]> {
+export async function listDisputes(opts?: ScopedOpts): Promise<DisputeEventRow[]> {
+  // Disputes are filed by an address (filed_by). When scoped, return disputes
+  // either filed by the customer OR attached to workflows owned by the customer.
+  if (opts?.customer) {
+    const customer = opts.customer.toLowerCase();
+    const myWorkflowIds = (
+      await db()
+        .select({ id: indexedWorkflows.id })
+        .from(indexedWorkflows)
+        .where(eq(indexedWorkflows.customer, customer))
+    ).map((r) => r.id);
+    if (myWorkflowIds.length === 0) return [];
+    const rows = await db()
+      .select()
+      .from(indexedDisputes)
+      .where(inArray(indexedDisputes.workflowId, myWorkflowIds))
+      .orderBy(desc(indexedDisputes.timestampMs))
+      .limit(opts?.limit ?? 100);
+    return rows.map((r) => ({
+      workflowId: r.workflowId,
+      outcomeId: r.outcomeId,
+      evidenceBlobIdHex: r.evidenceBlobIdHex,
+      filedBy: r.filedBy,
+      timestampMs: r.timestampMs,
+    }));
+  }
   const rows = await db()
     .select()
     .from(indexedDisputes)
@@ -182,8 +250,11 @@ export type DisputeStats = {
   }>;
 };
 
-export async function disputeStats(): Promise<DisputeStats> {
-  const [disputes, settlements] = await Promise.all([listDisputes({ limit: 200 }), listSettlements({ limit: 200 })]);
+export async function disputeStats(opts?: { customer?: string }): Promise<DisputeStats> {
+  const [disputes, settlements] = await Promise.all([
+    listDisputes({ limit: 200, customer: opts?.customer }),
+    listSettlements({ limit: 200, customer: opts?.customer }),
+  ]);
   const total = disputes.length;
   const settledTotal = settlements.length;
   const rate = settledTotal === 0 ? 0 : (total / settledTotal) * 100;
@@ -240,8 +311,10 @@ export type CustomerAggregate = {
   refundedCount: number;
 };
 
-export async function customerAggregates(opts?: { limit?: number }): Promise<CustomerAggregate[]> {
-  const rows = await db()
+export async function customerAggregates(opts?: ScopedOpts): Promise<CustomerAggregate[]> {
+  // Scoped: one row for the requested customer (or empty if they have no
+  // workflows yet). Unscoped: every customer, descending by GMV.
+  const baseSelect = db()
     .select({
       customer: indexedWorkflows.customer,
       workflowCount: sql<number>`COUNT(*)::int`,
@@ -254,6 +327,9 @@ export async function customerAggregates(opts?: { limit?: number }): Promise<Cus
     .groupBy(indexedWorkflows.customer)
     .orderBy(desc(sql`SUM(${indexedWorkflows.totalRevenue})`))
     .limit(opts?.limit ?? 100);
+  const rows = opts?.customer
+    ? await baseSelect.where(eq(indexedWorkflows.customer, opts.customer.toLowerCase()))
+    : await baseSelect;
   return rows.map((r) => ({
     customer: r.customer,
     workflowCount: Number(r.workflowCount),
@@ -277,10 +353,27 @@ export type DashboardStats = {
   refunded: number;
 };
 
-export async function dashboardStats(): Promise<DashboardStats> {
+export async function dashboardStats(opts?: { customer?: string }): Promise<DashboardStats> {
   const d = db();
-  const wfRows = await d.select().from(indexedWorkflows);
-  const settled = await d.select().from(indexedSettlements);
+  const customer = opts?.customer?.toLowerCase();
+  const wfRows = customer
+    ? await d.select().from(indexedWorkflows).where(eq(indexedWorkflows.customer, customer))
+    : await d.select().from(indexedWorkflows);
+
+  // For platform-fee math we need settlements scoped the same way. If we
+  // scoped wf rows, restrict settlements to those workflow IDs.
+  let settled: Array<{ platformFee: number }>;
+  if (customer) {
+    const ids = wfRows.map((w) => w.id);
+    settled = ids.length === 0
+      ? []
+      : await d
+          .select({ platformFee: indexedSettlements.platformFee })
+          .from(indexedSettlements)
+          .where(inArray(indexedSettlements.workflowId, ids));
+  } else {
+    settled = await d.select({ platformFee: indexedSettlements.platformFee }).from(indexedSettlements);
+  }
 
   let totalRevenue = 0;
   let totalCost = 0;
@@ -320,7 +413,10 @@ export type MarginByProduct = {
   marginPct: number;
 };
 
-export async function marginByProduct(): Promise<MarginByProduct[]> {
+export async function marginByProduct(opts?: { customer?: string }): Promise<MarginByProduct[]> {
+  const where = opts?.customer
+    ? and(eq(indexedWorkflows.status, 3), eq(indexedWorkflows.customer, opts.customer.toLowerCase()))
+    : eq(indexedWorkflows.status, 3);
   const rows = await db()
     .select({
       productId: indexedWorkflows.productId,
@@ -330,7 +426,7 @@ export async function marginByProduct(): Promise<MarginByProduct[]> {
       totalMargin: sql<number>`COALESCE(SUM(${indexedWorkflows.margin}), 0)::bigint`,
     })
     .from(indexedWorkflows)
-    .where(eq(indexedWorkflows.status, 3))
+    .where(where)
     .groupBy(indexedWorkflows.productId);
   return rows.map((r) => {
     const rev = Number(r.totalRevenue);
