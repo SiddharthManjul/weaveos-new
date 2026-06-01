@@ -45,6 +45,7 @@ export default function ZkLoginCallbackPage() {
           ephemeralPubkeyB64: string;
           maxEpoch: number;
           jwtRandomness: string;
+          next?: string;
         };
 
         // 3. Ask the server to call the prover + derive the Sui address.
@@ -79,8 +80,14 @@ export default function ZkLoginCallbackPage() {
         localStorage.setItem(ZKLOGIN_SESSION_KEY, JSON.stringify(session));
         sessionStorage.removeItem(ZKLOGIN_PENDING_KEY);
 
-        // 5. Bounce back to the app.
-        router.replace("/dashboard");
+        // 5. Bounce back to the app — to wherever the sign-in flow targeted.
+        //    Validate that `next` is a relative path so we can't be redirected
+        //    off-site by tampering with sessionStorage.
+        const safeNext =
+          pending.next && pending.next.startsWith("/") && !pending.next.startsWith("//")
+            ? pending.next
+            : "/dashboard";
+        router.replace(safeNext);
       } catch (e) {
         setError((e as Error).message);
         setStatus("error");
