@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 
 import { db, customers, auditLog, type NewCustomer } from "@/lib/db";
 import { customerAggregates } from "@/lib/db/queries";
+import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
 
 export const runtime = "nodejs";
 
@@ -23,11 +24,21 @@ const isAddress = (s: unknown): s is string =>
   typeof s === "string" && /^0x[0-9a-fA-F]{2,64}$/.test(s);
 
 export async function GET(): Promise<NextResponse> {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
   try {
     const d = db();
+    const me = effectiveOnChainAddress(user).toLowerCase();
     const [records, agg] = await Promise.all([
-      d.select().from(customers).orderBy(customers.createdAtMs),
-      customerAggregates({ limit: 100 }),
+      // Off-chain directory: rows the user has explicitly added (their own
+      // CRM-style customer list). Filtered to entries they themselves created.
+      d
+        .select()
+        .from(customers)
+        .where(eq(customers.address, me))
+        .orderBy(customers.createdAtMs),
+      // On-chain aggregate: at most one row — the user's own activity.
+      customerAggregates({ limit: 1, customer: effectiveOnChainAddress(user) }),
     ]);
     const aggByAddr = new Map(agg.map((a) => [a.customer.toLowerCase(), a]));
     const out = records.map((c) => {
@@ -59,6 +70,9 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
+
   type Body = { address?: string; name?: string; email?: string; slug?: string; notes?: string };
   let body: Body;
   try {
@@ -68,6 +82,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   if (!isAddress(body.address)) {
     return NextResponse.json({ error: "address must be 0x-prefixed hex" }, { status: 400 });
+  }
+  // Tenant lock: a user can only create/update the customer record that
+  // corresponds to their own zkLogin address. The directory page exposes
+  // this as a profile edit (and a one-click "claim" of their unlinked
+  // on-chain activity).
+  if (body.address.toLowerCase() !== effectiveOnChainAddress(user).toLowerCase()) {
+    return NextResponse.json(
+      { error: "you can only edit your own customer record" },
+      { status: 403 },
+    );
   }
   if (!body.name || body.name.length < 1) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -110,15 +134,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 }
 
 export async function DELETE(req: NextRequest): Promise<NextResponse> {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
+
   const addr = new URL(req.url).searchParams.get("address");
   if (!isAddress(addr)) {
     return NextResponse.json({ error: "address query param required" }, { status: 400 });
+  }
+  if (addr.toLowerCase() !== effectiveOnChainAddress(user).toLowerCase()) {
+    return NextResponse.json(
+      { error: "you can only delete your own customer record" },
+      { status: 403 },
+    );
   }
   try {
     const d = db();
     await d.delete(customers).where(eq(customers.address, addr.toLowerCase()));
     await d.insert(auditLog).values({
-      actorAddress: addr.toLowerCase(),
+      actorAddress: effectiveOnChainAddress(user).toLowerCase(),
       action: "customer.delete",
       targetId: addr.toLowerCase(),
       atMs: Date.now(),

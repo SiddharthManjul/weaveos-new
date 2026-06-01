@@ -1,19 +1,28 @@
-// /api/demo/run-lifecycle — clickable end-to-end weaveOS lifecycle.
+// POST /api/workflows/start — parameterised workflow lifecycle for humans
+// (via the Create-Workflow form) AND agents (via API key + SDK).
 //
-// Streams NDJSON stage events so the browser can show progress in real time.
-// Reuses the helpers in `src/lib/weaveos/lifecycle.ts` (same code path that
-// `npm run lifecycle` exercises from the CLI), plus the existing /api/verify
-// endpoint for outcome verification.
+// Shared body shape:
+//   {
+//     productId?:    string         (default: WEAVEOS_PRODUCT_ID env)
+//     priceBaseUnits?: number       (default: 0.1 SUI = 100_000_000)
+//     criteria?:     SuccessCriterion (default: simple all_of with a sentinel)
+//     outcome?:      Record<string, unknown>  (the agent's claimed output)
+//     costItems?:    Array<{ provider, category, units, amount }>
+//     disputeWindowSeconds?: number (default: 10)
+//   }
 //
-// Total duration: ~30–45s including a 10s dispute window. Within Vercel's
-// Hobby-tier 60s serverless function limit.
+// Auth: cookie OR `Authorization: Bearer wos_…`. Both routes scope to the
+// caller's effective on-chain address (env-var customer in the current
+// fallback, or their zkLogin address once that path is re-enabled).
+//
+// Response: NDJSON stream of {event, data} events matching the demo lifecycle
+// shape so the existing drawer can render it without changes.
 
 import { NextRequest } from "next/server";
 
 import {
   type LifecycleCostItem,
   type VerifyResponse,
-  type ZkLoginContext,
   createQuote,
   createWorkflow,
   getSuiClient,
@@ -24,34 +33,19 @@ import {
 } from "@/lib/weaveos/lifecycle";
 import { encodeCriteriaBytes, type SuccessCriterion } from "@/lib/weaveos/dsl";
 import { weaveosConfig } from "@/lib/weaveos/config";
+import { resolveCaller } from "@/lib/weaveos/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// === Request shape ===
-
-type RunBody = {
-  /** Force the verifier verdict path. Default: success. */
-  outcomeMode?: "success" | "failure";
-  /** Override the dispute window. Default 10s. */
+type StartBody = {
+  productId?: string;
+  priceBaseUnits?: number;
+  criteria?: SuccessCriterion;
+  outcome?: Record<string, unknown>;
+  costItems?: LifecycleCostItem[];
   disputeWindowSeconds?: number;
-  /** Override the quote price (base units). Default 0.1 SUI. */
-  quotePriceBaseUnits?: number;
-  /**
-   * Optional zkLogin session. When present, the lifecycle is signed by the
-   * zkLogin user's ephemeral key + zkProof, and the on-chain customer is the
-   * zkLogin user's address (instead of the env-var customer).
-   */
-  zkLoginSession?: {
-    ephemeralPrivkey: string;          // bech32 suiprivkey1…
-    suiAddress: string;                // zkLogin-derived address
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    zkProofInputs: any;
-    maxEpoch: number;
-  };
 };
-
-// === Helpers ===
 
 function need(name: string): string {
   const v = process.env[name];
@@ -62,62 +56,68 @@ function need(name: string): string {
 function explorerTx(d: string): string {
   return `https://suiscan.xyz/testnet/tx/${d}`;
 }
-
 function explorerObj(id: string): string {
   return `https://suiscan.xyz/testnet/object/${id}`;
 }
 
-// === Route ===
-
 export async function POST(req: NextRequest): Promise<Response> {
-  let body: RunBody = {};
-  try {
-    body = (await req.json()) as RunBody;
-  } catch {
-    // Empty body is fine — fall through to defaults.
+  // === Auth ===
+  const caller = await resolveCaller(req);
+  if (!caller) {
+    return Response.json(
+      { error: "unauthorized — sign in or use Authorization: Bearer wos_…" },
+      { status: 401 },
+    );
   }
-  const outcomeMode = body.outcomeMode ?? "success";
-  const disputeWindowSeconds = body.disputeWindowSeconds ?? 10;
-  const quotePrice = body.quotePriceBaseUnits ?? 100_000_000; // 0.1 SUI
-  const feeBps = 500;
 
-  // Resolve env once so any setup failure surfaces before we open the stream.
-  const productId = need("WEAVEOS_PRODUCT_ID");
+  // === Body ===
+  let body: StartBody = {};
+  try {
+    body = (await req.json()) as StartBody;
+  } catch {
+    // Empty body is acceptable; defaults apply.
+  }
+
+  const productId = body.productId ?? need("WEAVEOS_PRODUCT_ID");
+  const priceBaseUnits = body.priceBaseUnits ?? 100_000_000;
+  const disputeWindowSeconds = body.disputeWindowSeconds ?? 10;
+  const feeBps = 500;
   const platformTreasury = need("WEAVEOS_PLATFORM_TREASURY");
   const modelProvider = need("WEAVEOS_MODEL_PROVIDER");
   const toolProvider = need("WEAVEOS_TOOL_PROVIDER");
   const agentCompany = need("WEAVEOS_AGENT_COMPANY");
 
-  // Pick the signing identity. If a zkLogin session is attached, use the
-  // ephemeral key + zkProof for signing and the zkLogin address as customer.
-  // Otherwise fall back to the env-var customer keypair.
-  const usingZkLogin = Boolean(body.zkLoginSession);
-  const signerPrivkey = usingZkLogin
-    ? body.zkLoginSession!.ephemeralPrivkey
-    : need("WEAVEOS_CUSTOMER_PRIVKEY");
-  const signer = keypairFromBech32(signerPrivkey);
-  const customerAddr = usingZkLogin
-    ? body.zkLoginSession!.suiAddress
-    : signer.getPublicKey().toSuiAddress();
-  const zk: ZkLoginContext | undefined = usingZkLogin
-    ? {
-        senderAddress: body.zkLoginSession!.suiAddress,
-        zkProofInputs: body.zkLoginSession!.zkProofInputs,
-        maxEpoch: body.zkLoginSession!.maxEpoch,
-      }
-    : undefined;
+  // Defaults that make the demo "just work" if the caller omits them.
+  const criteria: SuccessCriterion = body.criteria ?? {
+    type: "all_of",
+    criteria: [
+      { type: "exact", path: "/ticket_status", value: "closed" },
+      { type: "numeric_threshold", path: "/refund_amount", op: "<=", value: 100 },
+    ],
+  };
+  const outcome: Record<string, unknown> = body.outcome ?? {
+    ticket_status: "closed",
+    refund_amount: 47.5,
+  };
+  const costItems: LifecycleCostItem[] = body.costItems ?? [
+    { provider: modelProvider, category: 0, units: 12000, amount: 20_000_000 },
+    { provider: toolProvider, category: 1, units: 3, amount: 2_000_000 },
+  ];
+
+  // === Signing identity ===
+  // Until zkLogin tx signing is restored, every caller signs as the env-var
+  // customer. The Move contracts treat `tx.sender` as `customer`, so the
+  // resulting workflows are scoped to that address — matching what every
+  // dashboard read filters on.
+  const signer = keypairFromBech32(need("WEAVEOS_CUSTOMER_PRIVKEY"));
+  const customerAddr = signer.getPublicKey().toSuiAddress();
   const client = getSuiClient();
 
+  // === Stream setup ===
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
   const enc = new TextEncoder();
-  // Track whether the consumer is still listening. When they close the
-  // drawer mid-run (or the connection drops) the writable side is
-  // auto-closed; subsequent writes throw `Invalid state: WritableStream is
-  // closed`. Once we see one of those, stop trying to emit.
   let writerOpen = true;
-
-  /** Emit one NDJSON event. Becomes a no-op once the consumer has hung up. */
   async function emit(event: string, data: Record<string, unknown>): Promise<void> {
     if (!writerOpen) return;
     try {
@@ -127,46 +127,26 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
   }
 
-  // Run the lifecycle in the background. We return the streaming response
-  // immediately and pipe events as each stage completes.
   void (async () => {
     try {
-      // Criteria that always passes on the chosen outcomeMode.
-      const criteria: SuccessCriterion = {
-        type: "all_of",
-        criteria: [
-          { type: "exact", path: "/ticket_status", value: "closed" },
-          { type: "numeric_threshold", path: "/refund_amount", op: "<=", value: 100 },
-        ],
-      };
-      const outcome =
-        outcomeMode === "success"
-          ? { ticket_status: "closed", refund_amount: 47.5 }
-          : { ticket_status: "open", refund_amount: 9999 };
-      const costTrace: LifecycleCostItem[] = [
-        { provider: modelProvider, category: 0, units: 12000, amount: 20_000_000 },
-        { provider: toolProvider, category: 1, units: 3, amount: 2_000_000 },
-      ];
-
       await emit("start", {
+        caller: caller.via,
         customer: customerAddr,
         productId,
-        priceBaseUnits: quotePrice,
-        outcomeMode,
+        priceBaseUnits,
         disputeWindowSeconds,
-        signingMode: usingZkLogin ? "zklogin" : "ed25519",
       });
 
-      // === Stage 1: Quote ===
+      // 1. Quote
       await emit("stage", { stage: "quote", status: "started" });
       const q = await createQuote(client, signer, {
         productId,
         customer: customerAddr,
-        priceBaseUnits: quotePrice,
+        priceBaseUnits,
         pricingModelEnum: 0,
         criteriaBytes: Array.from(encodeCriteriaBytes(criteria)),
         expiresAtMs: Date.now() + 60 * 60 * 1000,
-      }, zk);
+      });
       await emit("stage", {
         stage: "quote",
         status: "done",
@@ -175,13 +155,13 @@ export async function POST(req: NextRequest): Promise<Response> {
         explorer: explorerTx(q.digest),
       });
 
-      // === Stage 2: Workflow + escrow ===
+      // 2. Workflow + escrow
       await emit("stage", { stage: "workflow", status: "started" });
       const w = await createWorkflow(client, signer, {
         productId,
         quoteId: q.quoteId,
-        paymentBaseUnits: quotePrice,
-      }, zk);
+        paymentBaseUnits: priceBaseUnits,
+      });
       await emit("stage", {
         stage: "workflow",
         status: "done",
@@ -190,14 +170,14 @@ export async function POST(req: NextRequest): Promise<Response> {
         explorer: explorerObj(w.workflowId),
       });
 
-      // === Stage 3: Execution ===
+      // 3. Execution
       await emit("stage", { stage: "execution", status: "started" });
       const e = await recordExecution(client, signer, {
         workflowId: w.workflowId,
         startedAtMs: Date.now() - 5_000,
-        costItems: costTrace,
-        traceBlobId: "demo_trace_blob",
-      }, zk);
+        costItems,
+        traceBlobId: "user_trace_blob",
+      });
       await emit("stage", {
         stage: "execution",
         status: "done",
@@ -206,7 +186,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         explorer: explorerTx(e.digest),
       });
 
-      // === Stage 4: /api/verify ===
+      // 4. Verify (calls /api/verify)
       await emit("stage", { stage: "verify", status: "started" });
       const baseUrl = new URL(req.url).origin;
       const verifyResp = await fetch(`${baseUrl}/api/verify`, {
@@ -215,13 +195,13 @@ export async function POST(req: NextRequest): Promise<Response> {
         body: JSON.stringify({
           workflowId: w.workflowId,
           productId,
-          quotePrice,
+          quotePrice: priceBaseUnits,
           feeBps,
           agentCompany,
           platformTreasury,
           criteria,
           outcome,
-          costTrace,
+          costTrace: costItems,
           disputeWindowSeconds,
         }),
       });
@@ -237,14 +217,14 @@ export async function POST(req: NextRequest): Promise<Response> {
         signaturePrefix: verify.signatureHex.slice(0, 16) + "…",
       });
 
-      // === Stage 5: Outcome on chain ===
+      // 5. Outcome on chain
       await emit("stage", { stage: "outcome", status: "started" });
       const o = await submitAttestationDev(client, signer, {
         workflowId: w.workflowId,
         productId,
         quoteId: q.quoteId,
         verify,
-      }, zk);
+      });
       await emit("stage", {
         stage: "outcome",
         status: "done",
@@ -253,13 +233,13 @@ export async function POST(req: NextRequest): Promise<Response> {
         explorer: explorerObj(o.outcomeId),
       });
 
-      // === Stage 6: Dispute window wait ===
+      // 6. Dispute window wait
       const waitMs = (disputeWindowSeconds + 2) * 1000;
       await emit("stage", { stage: "dispute_window", status: "started", waitMs });
       await new Promise((r) => setTimeout(r, waitMs));
       await emit("stage", { stage: "dispute_window", status: "done" });
 
-      // === Stage 7: Settlement ===
+      // 7. Settlement
       await emit("stage", { stage: "settle", status: "started" });
       const s = await settleWorkflowDev(client, signer, {
         workflowId: w.workflowId,
@@ -269,7 +249,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         executionId: e.executionId,
         outcomeId: o.outcomeId,
         verify,
-      }, zk);
+      });
       await emit("stage", {
         stage: "settle",
         status: "done",
@@ -278,14 +258,11 @@ export async function POST(req: NextRequest): Promise<Response> {
         explorer: explorerObj(s.settlementId),
       });
 
-      // Refresh the Postgres mirror so the new workflow appears in the
-      // dashboard immediately. Best-effort; don't fail the demo if the
-      // indexer errors.
+      // Refresh the Postgres mirror so the new workflow appears immediately.
       try {
-        const baseUrlForIndex = new URL(req.url).origin;
-        await fetch(`${baseUrlForIndex}/api/keeper/index-tick`, { method: "POST" });
+        await fetch(`${baseUrl}/api/keeper/index-tick`, { method: "POST" });
       } catch {
-        // ignore
+        // best-effort
       }
 
       await emit("complete", {
@@ -300,8 +277,6 @@ export async function POST(req: NextRequest): Promise<Response> {
     } catch (err) {
       await emit("error", { message: (err as Error).message });
     } finally {
-      // The writer may already be closed if the consumer hung up — swallow
-      // ERR_INVALID_STATE so it doesn't escape as an unhandledRejection.
       try {
         if (writerOpen) await writer.close();
       } catch {

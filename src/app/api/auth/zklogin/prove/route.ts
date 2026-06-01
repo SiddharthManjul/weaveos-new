@@ -11,9 +11,11 @@
 // address. Client stores the result + ephemeral private key in localStorage.
 
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import {
   computeZkLoginAddress,
   decodeJwt,
+  genAddressSeed,
   getExtendedEphemeralPublicKey,
 } from "@mysten/sui/zklogin";
 import { Ed25519PublicKey } from "@mysten/sui/keypairs/ed25519";
@@ -21,6 +23,12 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { eq } from "drizzle-orm";
 
 import { ZKLOGIN_CONFIG, decodeJwtClaims } from "@/lib/weaveos/zklogin";
+import {
+  WEAVEOS_USER_COOKIE,
+  serializeUserCookie,
+  userCookieOptions,
+  type UserSession,
+} from "@/lib/weaveos/session";
 import { db, users, auditLog, type NewUser } from "@/lib/db";
 
 // Google's published JWK set — used to verify id_token signatures.
@@ -63,7 +71,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // 1. Reconstruct the extended public key for the prover.
+    // 1. Reconstruct the extended public key for the prover via the SDK
+    //    function — Mysten's official zkLogin sample uses this exact call,
+    //    and the dev prover accepts the format it produces.
     const pubkeyBytes = Buffer.from(body.ephemeralPublicKey, "base64");
     const ephemeralPub = new Ed25519PublicKey(pubkeyBytes);
     const extendedEphemeralPublicKey = getExtendedEphemeralPublicKey(ephemeralPub);
@@ -88,18 +98,40 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: 502 },
       );
     }
-    const zkProofInputs = await proverResp.json();
+    const rawProverPayload = (await proverResp.json()) as Record<string, unknown>;
 
     // 3. Compute the deterministic Sui address.
     const decoded = decodeJwt(body.jwt);
+    const audValue =
+      typeof decoded.aud === "string" ? decoded.aud : decoded.aud![0];
     const suiAddress = computeZkLoginAddress({
       claimName: "sub",
       claimValue: decoded.sub!,
       userSalt: ZKLOGIN_CONFIG.platformSalt,
       iss: decoded.iss!,
-      aud: typeof decoded.aud === "string" ? decoded.aud : decoded.aud![0],
+      aud: audValue,
       legacyAddress: false,
     });
+
+    // 3b. The Mysten prover returns proofPoints + issBase64Details + headerBase64,
+    //     but `getZkLoginSignature` also needs `addressSeed: string`. Compute it
+    //     here from (salt, "sub", subValue, aud) and merge into the inputs blob.
+    //     Without this, the BCS layer trips on "Invalid string value: undefined"
+    //     when the client tries to build a tx signature.
+    const addressSeed = genAddressSeed(
+      BigInt(ZKLOGIN_CONFIG.platformSalt),
+      "sub",
+      decoded.sub!,
+      audValue,
+    ).toString();
+    // Stamp the build so we can tell from localStorage which prove-route
+    // version produced this session.
+    const zkProofInputs = {
+      ...rawProverPayload,
+      addressSeed,
+      _weaveosProveVersion: "sdk-extpub-v2",
+      _weaveosExtPubSent: extendedEphemeralPublicKey,
+    };
 
     // 4. Pull display claims (email, name, picture) for the UI.
     const claims = decodeJwtClaims(body.jwt);
@@ -172,6 +204,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // eslint-disable-next-line no-console
       console.warn("[zklogin] persist user failed:", (e as Error).message);
     }
+
+    // 7. Set the identity cookie so server components + proxy can identify
+    //    this user on subsequent requests. The cookie holds *only* public
+    //    identity (address, sub, profile). No keys, no zkProof, no JWT.
+    const sessionPayload: UserSession = {
+      suiAddress,
+      sub: decoded.sub!,
+      email: claims.email,
+      name: claims.name,
+      picture: claims.picture,
+    };
+    const cookieStore = await cookies();
+    cookieStore.set(WEAVEOS_USER_COOKIE, serializeUserCookie(sessionPayload), userCookieOptions());
 
     return NextResponse.json({
       suiAddress,

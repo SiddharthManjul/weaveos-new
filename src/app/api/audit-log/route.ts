@@ -9,18 +9,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 
 import { db, auditLog } from "@/lib/db";
+import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
 
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
+
   const url = new URL(req.url);
-  const actor = url.searchParams.get("actor");
   const action = url.searchParams.get("action");
   const limit = Math.min(Number(url.searchParams.get("limit") ?? 50), 200);
 
   try {
-    const conds = [];
-    if (actor) conds.push(eq(auditLog.actorAddress, actor.toLowerCase()));
+    // Always scope to the current user — ignore any ?actor= override.
+    // Audit logs are immutable but they reveal what each user did; only their
+    // own entries should be visible.
+    const conds = [eq(auditLog.actorAddress, effectiveOnChainAddress(user).toLowerCase())];
     if (action) conds.push(eq(auditLog.action, action));
     const rows = await db()
       .select()
