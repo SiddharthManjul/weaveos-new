@@ -12,8 +12,6 @@ import {
   CopyIcon, ArrowLeft01Icon, ArrowRightDoubleIcon,
 } from "@hugeicons/core-free-icons";
 
-import { ZkLoginButton } from "@/components/ZkLoginButton";
-
 // ─── Page meta ────────────────────────────────────────────────────────────────
 
 type IconType = React.ComponentProps<typeof HugeiconsIcon>["icon"];
@@ -336,11 +334,6 @@ export function TopNav({ onMenuClick }: { onMenuClick?: () => void }) {
               Sui Explorer
             </button>
           )}
-
-          {/* zkLogin sign-in (desktop only) */}
-          <div className="hidden md:block">
-            <ZkLoginButton />
-          </div>
 
           {/* Desktop search */}
           <button

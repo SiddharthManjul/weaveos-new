@@ -12,8 +12,11 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
   // Close sidebar on route change
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
-  // Landing, resource/blog, and changelog pages — render without shell
-  if (pathname === "/" || pathname.startsWith("/resources") || pathname === "/changelog" || pathname === "/about" || pathname === "/contact" || pathname === "/blog" || pathname === "/pricing" || pathname === "/privacy" || pathname === "/terms" || pathname === "/security") {
+  // Landing, marketing, and OAuth flow pages — render without shell.
+  // /auth/* is critical: the callback page must not share the Sidebar with
+  // /dashboard, otherwise the user chip mounts before the cookie is set and
+  // can't recover when the post-OAuth redirect lands.
+  if (pathname === "/" || pathname.startsWith("/auth") || pathname.startsWith("/resources") || pathname === "/changelog" || pathname === "/about" || pathname === "/contact" || pathname === "/blog" || pathname === "/pricing" || pathname === "/privacy" || pathname === "/terms" || pathname === "/security") {
     return (
       <div className="flex-1 overflow-y-auto bg-black">
         {children}

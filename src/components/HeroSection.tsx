@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { RequestAccessButton } from "@/components/RequestAccessButton";
 
 export function HeroSection() {
   const sectionRef = useRef<HTMLElement>(null);
@@ -32,13 +33,13 @@ export function HeroSection() {
   return (
     <section
       ref={sectionRef}
-      className="relative z-10 w-full overflow-hidden"
+      className="relative z-10 w-full overflow-hidden flex items-center"
       style={{ minHeight: "100svh" }}
     >
 
-      {/* Left: text + CTA */}
-      {/* Mobile: pt-[36svh] sits content just above vertical centre. Desktop: fixed pt-20. */}
-      <div className="relative z-10 max-w-[1200px] mx-auto px-5 pt-[42svh] pb-16 sm:pt-20 sm:pb-28">
+      {/* Left: text + CTA — vertically centred on desktop, left-anchored at all sizes.
+          Mobile keeps a top offset so the text sits below the fixed nav. */}
+      <div className="relative z-10 w-full max-w-[1200px] mx-auto px-5 pt-[42svh] pb-16 sm:pt-0 sm:pb-0">
         <div className="max-w-[480px]">
 
           <h1
@@ -56,38 +57,10 @@ export function HeroSection() {
             losing money before they kill your margins.
           </p>
 
-          {/* CTA button — smaller on mobile, full-size on sm+ */}
-          <a
-            href="/dashboard"
-            className="group relative mt-6 sm:mt-8 inline-flex items-center
-                       gap-2 sm:gap-3 rounded-full overflow-hidden
-                       pt-[6px] pb-[6px] pl-4 pr-[2px]
-                       sm:pt-[9px] sm:pb-[9px] sm:pl-5 sm:pr-[3px]"
-            style={{ background: "#3064FF", border: "2px solid #3064FF" }}
-          >
-            <span
-              className="absolute right-[2px] sm:right-[3px] top-1/2 -translate-y-1/2
-                         w-[26px] h-[26px] sm:w-[32px] sm:h-[32px]
-                         rounded-full bg-black scale-0 group-hover:scale-[14]
-                         transition-transform duration-500 ease-in-out"
-              aria-hidden="true"
-            />
-            <span className="relative z-10 text-white font-semibold text-[13px] sm:text-[14px]">
-              Request Access
-            </span>
-            <span className="relative z-10 w-[26px] h-[26px] sm:w-[32px] sm:h-[32px] rounded-full flex items-center justify-center shrink-0 bg-black">
-              <svg
-                className="transition-transform duration-500 group-hover:-rotate-45"
-                width="9" height="9" viewBox="0 0 11 11" fill="none"
-              >
-                <path
-                  d="M2 5.5h7M5.5 2 9 5.5 5.5 9"
-                  stroke="white" strokeWidth="1.5"
-                  strokeLinecap="round" strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-          </a>
+          {/* CTA — kicks off Google OAuth → zkLogin → /dashboard */}
+          <div className="mt-6 sm:mt-8">
+            <RequestAccessButton size="md" />
+          </div>
 
         </div>
       </div>
