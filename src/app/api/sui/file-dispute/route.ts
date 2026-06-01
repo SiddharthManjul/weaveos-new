@@ -17,11 +17,15 @@ import {
   keypairFromBech32,
 } from "@/lib/weaveos/lifecycle";
 import { walrusPut } from "@/lib/weaveos/walrus";
+import { getCurrentUser } from "@/lib/weaveos/session";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
+
   type Body = { workflowId?: string; outcomeId?: string; evidenceText?: string };
   let body: Body;
   try {
