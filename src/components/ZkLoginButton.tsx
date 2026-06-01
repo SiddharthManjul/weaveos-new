@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { generateNonce, generateRandomness } from "@mysten/sui/zklogin";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Logout03Icon,
   CopyIcon,
   CheckmarkCircleIcon,
 } from "@hugeicons/core-free-icons";
+
+import { startZkLoginSignIn } from "@/lib/weaveos/signin";
 
 const SESSION_KEY = "weaveos.zklogin.session";
 const PENDING_KEY = "weaveos.zklogin.pending";
@@ -44,6 +44,7 @@ export function ZkLoginButton() {
       const raw = localStorage.getItem(SESSION_KEY);
       if (raw) {
         const s = JSON.parse(raw) as StoredSession;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSession(s);
       }
     } catch {
@@ -54,55 +55,25 @@ export function ZkLoginButton() {
   async function signIn() {
     setLoading(true);
     try {
-      // 1. Generate an ephemeral keypair.
-      const ephemeral = new Ed25519Keypair();
-      const ephemeralPubkeyB64 = Buffer.from(ephemeral.getPublicKey().toRawBytes()).toString("base64");
-
-      // 2. Fetch current Sui epoch + computed maxEpoch.
-      const epochResp = await fetch("/api/auth/zklogin/epoch");
-      if (!epochResp.ok) throw new Error(`epoch fetch: ${epochResp.status}`);
-      const { maxEpoch } = await epochResp.json();
-
-      // 3. Generate randomness + nonce.
-      const jwtRandomness = generateRandomness();
-      const nonce = generateNonce(ephemeral.getPublicKey(), maxEpoch, jwtRandomness);
-
-      // 4. Stash the ephemeral state so the callback page can finish proving.
-      sessionStorage.setItem(
-        PENDING_KEY,
-        JSON.stringify({
-          ephemeralPrivkey: ephemeral.getSecretKey(),
-          ephemeralPubkeyB64,
-          maxEpoch,
-          jwtRandomness: jwtRandomness.toString(),
-        }),
-      );
-
-      // 5. Redirect to Google OAuth (response_type=id_token uses URL fragment).
-      const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-      if (!clientId) {
-        throw new Error("NEXT_PUBLIC_GOOGLE_CLIENT_ID not set");
-      }
-      const redirectUri = `${window.location.origin}/auth/zklogin/callback`;
-      const params = new URLSearchParams({
-        client_id: clientId,
-        response_type: "id_token",
-        redirect_uri: redirectUri,
-        scope: "openid email profile",
-        nonce,
-      });
-      window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+      await startZkLoginSignIn({ next: "/dashboard" });
     } catch (e) {
-      // eslint-disable-next-line no-alert
       alert(`Sign-in failed: ${(e as Error).message}`);
       setLoading(false);
     }
   }
 
-  function signOut() {
+  async function signOut() {
+    // Clear server cookie first so the proxy sees us as signed-out, then
+    // purge local state and bounce to the landing page.
+    try {
+      await fetch("/api/auth/zklogin/signout", { method: "POST" });
+    } catch {
+      // best-effort — local sign-out still proceeds
+    }
     localStorage.removeItem(SESSION_KEY);
     setSession(null);
     setMenuOpen(false);
+    router.push("/");
     router.refresh();
   }
 
