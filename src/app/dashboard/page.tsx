@@ -15,6 +15,8 @@ import {
   listWorkflows,
 } from "@/lib/db/queries";
 import { formatSui, marginPercent, relativeTime, shortenAddress } from "@/lib/weaveos/format";
+import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
+import { redirect } from "next/navigation";
 
 const SUI_DECIMALS = 9;
 
@@ -110,11 +112,18 @@ function LiveActivityCard({ activities }: { activities: Activity[] }) {
 }
 
 export default async function Home() {
+  // proxy.ts already blocks unauthenticated visitors, but RSCs are not
+  // guaranteed to run only after proxy in every Next codepath (cached
+  // /_next/data routes notably bypass it). Re-check here.
+  const user = await getCurrentUser();
+  if (!user) redirect("/?signin=1&next=/dashboard");
+
+  const scope = { customer: effectiveOnChainAddress(user) };
   const [stats, workflows, customers, disputes] = await Promise.all([
-    dashboardStats().catch(() => null),
-    listWorkflows({ limit: 20 }).catch(() => []),
-    customerAggregates({ limit: 50 }).catch(() => []),
-    disputeStats().catch(() => null),
+    dashboardStats(scope).catch(() => null),
+    listWorkflows({ limit: 20, ...scope }).catch(() => []),
+    customerAggregates({ limit: 50, ...scope }).catch(() => []),
+    disputeStats(scope).catch(() => null),
   ]);
 
   const topCustomers: TopCustomersDatum[] = customers.slice(0, 5).map((c) => ({

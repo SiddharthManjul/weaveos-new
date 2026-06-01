@@ -144,3 +144,107 @@ export interface WorkflowHandle {
   recordCost(item: CostItem): Promise<void>;
   complete(args: { outcome: unknown; artifact?: Uint8Array }): Promise<void>;
 }
+
+// ─── HTTP client (the path agents actually use today) ───────────────────────
+
+export type WeaveosClientOptions = {
+  /** Your API key from /developer (prefix `wos_…`). */
+  apiKey: string;
+  /** weaveOS API base URL. Defaults to https://app.weaveos.dev */
+  baseUrl?: string;
+};
+
+export type StartWorkflowParams = {
+  /** Quote price in coin base units (e.g. 100_000_000 = 0.1 SUI). */
+  priceBaseUnits: number;
+  /** Success criteria — what makes the outcome "right". */
+  criteria: SuccessCriterion;
+  /** The agent's claimed outcome that the verifier will check. */
+  outcome: Record<string, unknown>;
+  /** Cost items the agent burned during execution. */
+  costItems?: CostItem[];
+  /** Seconds the customer has to dispute before settlement fires. */
+  disputeWindowSeconds?: number;
+  /** Override the default product (otherwise the platform's default). */
+  productId?: string;
+};
+
+export type LifecycleEvent =
+  | { event: "start"; data: { caller: string; customer: string; productId: string; priceBaseUnits: number; disputeWindowSeconds: number } }
+  | { event: "stage"; data: { stage: string; status: "started" | "done"; [k: string]: unknown } }
+  | { event: "complete"; data: { workflowId: string; settlementId: string; workflowExplorer: string; settlementExplorer: string; [k: string]: unknown } }
+  | { event: "error"; data: { message: string } };
+
+/**
+ * HTTP-only weaveOS client. Use this from an agent process to drive workflows
+ * end-to-end against a hosted weaveOS deployment. Authentication is via your
+ * API key — no on-chain signing needed on the agent side.
+ *
+ * @example
+ * ```ts
+ * import { WeaveosClient } from "@weaveos/sdk";
+ *
+ * const wos = new WeaveosClient({ apiKey: process.env.WEAVEOS_API_KEY! });
+ *
+ * for await (const ev of wos.workflows.start({
+ *   priceBaseUnits: 100_000_000,
+ *   criteria: { type: "exact", path: "/ticket_status", value: "closed" },
+ *   outcome: { ticket_status: "closed", refund_amount: 47.5 },
+ * })) {
+ *   console.log(ev.event, ev.data);
+ *   if (ev.event === "complete") console.log("workflow", ev.data.workflowId);
+ * }
+ * ```
+ */
+export class WeaveosClient {
+  private readonly apiKey: string;
+  private readonly baseUrl: string;
+
+  constructor(opts: WeaveosClientOptions) {
+    this.apiKey = opts.apiKey;
+    this.baseUrl = (opts.baseUrl ?? "https://app.weaveos.dev").replace(/\/$/, "");
+  }
+
+  public readonly workflows = {
+    /**
+     * Kick off a workflow lifecycle on the hosted weaveOS server. Returns an
+     * async iterable of stage events streamed back over NDJSON. Iterate to
+     * watch progress or `await` the final complete/error event.
+     */
+    start: (params: StartWorkflowParams): AsyncIterable<LifecycleEvent> => {
+      return this._streamLifecycle(params);
+    },
+  };
+
+  private async *_streamLifecycle(
+    params: StartWorkflowParams,
+  ): AsyncIterable<LifecycleEvent> {
+    const resp = await fetch(`${this.baseUrl}/api/workflows/start`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(params),
+    });
+    if (!resp.ok || !resp.body) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`workflows.start ${resp.status}: ${text || resp.statusText}`);
+    }
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl = buf.indexOf("\n");
+      while (nl >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (line) yield JSON.parse(line) as LifecycleEvent;
+        nl = buf.indexOf("\n");
+      }
+    }
+  }
+}

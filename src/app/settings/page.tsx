@@ -11,6 +11,7 @@ import {
 
 import { RunKeeperButton } from "@/components/RunKeeperButton";
 import { RefreshIndexerButton } from "@/components/RefreshIndexerButton";
+import { useZkLoginSession } from "@/lib/weaveos/useSession";
 
 // ─── Types — mirror /api/settings ───────────────────────────────────────────
 
@@ -33,10 +34,6 @@ const ALL_TOPICS = [
   "WorkflowSettled",
   "WorkflowRefunded",
 ];
-
-const PLATFORM_TENANT =
-  process.env.NEXT_PUBLIC_WEAVEOS_TENANT_ADDRESS ??
-  "0xa7d0740b247a14ea578bf6f65b352d56e4fa6fdc8f69a6ce4b1276513bb85d2c";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -75,7 +72,8 @@ function CopyChip({ value, label }: { value: string; label?: string }) {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [tenantAddress, setTenantAddress] = useState(PLATFORM_TENANT);
+  const session = useZkLoginSession();
+  const tenantAddress = session?.suiAddress ?? "";
   const [data, setData] = useState<SettingsRecord | null>(null);
   const [draft, setDraft] = useState({
     webhookUrl: "",
@@ -111,8 +109,13 @@ export default function SettingsPage() {
     }
   }
   useEffect(() => {
+    // Wait until the session has hydrated from localStorage. The server
+    // ignores the ?address query and uses the cookie anyway, but loading
+    // before the session resolves gives an "address query required"-style
+    // race that looks confusing in the UI.
+    if (!tenantAddress) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load(tenantAddress);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantAddress]);
 
   async function save() {
@@ -123,7 +126,7 @@ export default function SettingsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tenantAddress,
+          // tenantAddress is server-derived from the cookie; we don't send it.
           webhookUrl: draft.webhookUrl,
           topics: Array.from(draft.topics),
           retryPolicy: {
@@ -178,14 +181,13 @@ export default function SettingsPage() {
           <HugeiconsIcon icon={Configuration01Icon} size={16} color="#a3a3a3" strokeWidth={1.5} />
           <span className="text-[14px] font-semibold text-white">Tenant settings</span>
         </div>
-        <input
-          value={tenantAddress}
-          onChange={(e) => setTenantAddress(e.target.value)}
-          className="flex-1 max-w-105 bg-[#171718] border border-[#1e1e1e] rounded-md px-3 py-2 text-[13px] text-[#d4d4d4] font-mono outline-none focus:border-[#2a2a2a]"
-        />
+        <div className="flex-1 max-w-105 bg-[#171718] border border-[#1e1e1e] rounded-md px-3 py-2 text-[13px] text-[#d4d4d4] font-mono">
+          {tenantAddress || <span className="text-[#5a5a5a]">No session — sign in first</span>}
+        </div>
         <button
-          onClick={() => load(tenantAddress)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#171718] border border-[#1e1e1e] text-[#a3a3a3] hover:text-white hover:border-[#2a2a2a] transition-colors text-[13px]"
+          onClick={() => tenantAddress && load(tenantAddress)}
+          disabled={!tenantAddress}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-[#171718] border border-[#1e1e1e] text-[#a3a3a3] hover:text-white hover:border-[#2a2a2a] disabled:opacity-50 transition-colors text-[13px]"
         >
           <HugeiconsIcon icon={RefreshIcon} size={13} color="currentColor" strokeWidth={1.5} />
           Reload

@@ -15,6 +15,7 @@ import {
   PlayCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { LifecycleDemoDrawer } from "@/components/LifecycleDemoDrawer";
+import { CreateWorkflowDrawer } from "@/components/CreateWorkflowDrawer";
 
 type Status = "Settled" | "Executing" | "Verified" | "Quoted" | "Disputed" | "Refunded";
 type DateRange = "Last 7 Days" | "Last 30 Days" | "Last 90 Days" | "All Time";
@@ -215,6 +216,7 @@ export default function WorkflowsPage() {
   const [error, setError]             = useState<string | null>(null);
   const [demoOpen, setDemoOpen]       = useState(false);
   const [demoMode, setDemoMode]       = useState<"success" | "failure">("success");
+  const [createOpen, setCreateOpen]   = useState(false);
 
   const fetchWorkflows = async () => {
     try {
@@ -315,15 +317,23 @@ export default function WorkflowsPage() {
         {/* Spacer */}
         <div className="flex-1" />
 
+        {/* Create your own */}
+        <button
+          onClick={() => setCreateOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium bg-[#3064FF] hover:bg-[#2050d0] text-white transition-colors"
+        >
+          <HugeiconsIcon icon={PlayCircleIcon} size={14} color="currentColor" strokeWidth={1.5} />
+          + Create workflow
+        </button>
+
         {/* Run demo */}
         <button
           onClick={() => {
             setDemoMode("success");
             setDemoOpen(true);
           }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium bg-[#3064FF] hover:bg-[#2050d0] text-white transition-colors"
+          className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium bg-[#1e1e1e] border border-[#272727] text-[#a3a3a3] hover:text-white transition-colors"
         >
-          <HugeiconsIcon icon={PlayCircleIcon} size={14} color="currentColor" strokeWidth={1.5} />
           Run demo workflow
         </button>
         <button
@@ -343,6 +353,8 @@ export default function WorkflowsPage() {
         onClose={() => setDemoOpen(false)}
         outcomeMode={demoMode}
       />
+
+      <CreateWorkflowDrawer open={createOpen} onClose={() => setCreateOpen(false)} />
 
       {/* Table card */}
       <div className="relative flex flex-col flex-1 min-h-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] overflow-hidden">
