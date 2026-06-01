@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 
 import { db, tenantSettings, auditLog, type NewTenantSettings } from "@/lib/db";
 import { encrypt, decrypt } from "@/lib/db/encryption";
+import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
 
 export const runtime = "nodejs";
 
@@ -20,10 +21,13 @@ const isAddr = (s: unknown): s is string =>
 const DEFAULT_RETRY = { maxAttempts: 5, backoffSeconds: 30 };
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  const addr = new URL(req.url).searchParams.get("address");
-  if (!isAddr(addr)) {
-    return NextResponse.json({ error: "address query required" }, { status: 400 });
-  }
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
+
+  // Allow ?address=… for parity with the existing client, but ignore it and
+  // always serve the signed-in user's own settings. This prevents a stale
+  // client from reading another tenant's webhook config.
+  const addr = effectiveOnChainAddress(user);
   try {
     const rows = await db()
       .select()
@@ -60,8 +64,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
+
   type Body = {
-    tenantAddress?: string;
     webhookUrl?: string;
     signingSecret?: string;
     topics?: string[];
@@ -73,14 +79,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (e) {
     return NextResponse.json({ error: `invalid JSON: ${(e as Error).message}` }, { status: 400 });
   }
-  if (!isAddr(body.tenantAddress)) {
-    return NextResponse.json({ error: "tenantAddress required" }, { status: 400 });
-  }
+  // Tenant is always the signed-in user; the body cannot override it.
+  const tenantAddress = effectiveOnChainAddress(user).toLowerCase();
   const d = db();
   const existing = await d
     .select()
     .from(tenantSettings)
-    .where(eq(tenantSettings.tenantAddress, body.tenantAddress.toLowerCase()))
+    .where(eq(tenantSettings.tenantAddress, tenantAddress))
     .limit(1);
 
   // Either keep the existing secret, accept a new one from the client, or
@@ -92,7 +97,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       : `whsec_${randomBytes(24).toString("base64url")}`);
 
   const record: NewTenantSettings = {
-    tenantAddress: body.tenantAddress.toLowerCase(),
+    tenantAddress,
     webhookUrl: body.webhookUrl ?? existing[0]?.webhookUrl ?? "",
     signingSecretEncrypted: encrypt(newSecret),
     topics: body.topics ?? existing[0]?.topics ?? [],
@@ -117,9 +122,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         },
       });
     await d.insert(auditLog).values({
-      actorAddress: body.tenantAddress.toLowerCase(),
+      actorAddress: tenantAddress,
       action: existing.length > 0 ? "settings.update" : "settings.create",
-      targetId: body.tenantAddress.toLowerCase(),
+      targetId: tenantAddress,
       payload: { webhookUrl: record.webhookUrl, topics: record.topics },
       atMs: Date.now(),
     });
