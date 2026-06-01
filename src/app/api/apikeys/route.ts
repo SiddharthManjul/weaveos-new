@@ -9,6 +9,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 
 import { db, apiKeys, auditLog, type NewApiKey } from "@/lib/db";
+import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
 
 export const runtime = "nodejs";
 
@@ -21,8 +22,14 @@ function sha256Hex(s: string): string {
 }
 
 export async function GET(): Promise<NextResponse> {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
   try {
-    const rows = await db().select().from(apiKeys).orderBy(desc(apiKeys.createdAtMs));
+    const rows = await db()
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.ownerAddress, effectiveOnChainAddress(user).toLowerCase()))
+      .orderBy(desc(apiKeys.createdAtMs));
     return NextResponse.json({
       keys: rows.map((k) => ({
         hash: k.hash,
@@ -41,15 +48,15 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  type Body = { ownerAddress?: string; label?: string; scopes?: string[] };
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
+
+  type Body = { label?: string; scopes?: string[] };
   let body: Body;
   try {
     body = (await req.json()) as Body;
   } catch (e) {
     return NextResponse.json({ error: `invalid JSON: ${(e as Error).message}` }, { status: 400 });
-  }
-  if (!body.ownerAddress || !/^0x[0-9a-fA-F]{2,64}$/.test(body.ownerAddress)) {
-    return NextResponse.json({ error: "ownerAddress required (0x-prefixed)" }, { status: 400 });
   }
   if (!body.label || body.label.length < 1) {
     return NextResponse.json({ error: "label required" }, { status: 400 });
@@ -59,7 +66,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const hash = sha256Hex(secret);
   const record: NewApiKey = {
     hash,
-    ownerAddress: body.ownerAddress.toLowerCase(),
+    ownerAddress: effectiveOnChainAddress(user).toLowerCase(),
     label: body.label,
     scopes: body.scopes ?? ["workflows:read", "workflows:write"],
     prefix: secret.slice(0, 10),
@@ -71,7 +78,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const d = db();
     await d.insert(apiKeys).values(record);
     await d.insert(auditLog).values({
-      actorAddress: body.ownerAddress.toLowerCase(),
+      actorAddress: effectiveOnChainAddress(user).toLowerCase(),
       action: "apikey.generate",
       targetId: hash,
       payload: { label: body.label, scopes: record.scopes, prefix: record.prefix },
@@ -95,10 +102,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 }
 
 export async function DELETE(req: NextRequest): Promise<NextResponse> {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
+
   const hash = new URL(req.url).searchParams.get("hash");
   if (!hash) return NextResponse.json({ error: "hash query required" }, { status: 400 });
   try {
     const d = db();
+    // Verify ownership before revoking — a user can only revoke their own keys.
+    const existing = await d.select().from(apiKeys).where(eq(apiKeys.hash, hash)).limit(1);
+    if (existing.length === 0) {
+      return NextResponse.json({ error: "key not found" }, { status: 404 });
+    }
+    if (existing[0].ownerAddress.toLowerCase() !== effectiveOnChainAddress(user).toLowerCase()) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
     // Soft-delete: mark revoked rather than actually drop the row. Keeps audit trail.
     const r = await d
       .update(apiKeys)
