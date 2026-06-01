@@ -12,10 +12,10 @@ import {
   UserGroupIcon,
   DeveloperIcon,
   SettingsIcon,
-  ArrowDownIcon,
-  LogoutIcon,
   CancelIcon,
 } from "@hugeicons/core-free-icons";
+
+import { SidebarUserChip } from "@/components/SidebarUserChip";
 
 type IconType = React.ComponentProps<typeof HugeiconsIcon>["icon"];
 
@@ -118,32 +118,9 @@ export function Sidebar({
         ))}
       </nav>
 
-      {/* Bottom user section */}
+      {/* Bottom user section — session-driven */}
       <div className="mx-2.5 border-t border-dashed border-[#272727] mb-1" />
-      <div className="flex items-center justify-between px-3 py-3 mx-1 mb-2 rounded-lg">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-6.5 h-6.5 rounded-full bg-[#0d2a8a] flex items-center justify-center shrink-0">
-            <span className="text-white text-[11px] font-semibold">P</span>
-          </div>
-          <span className="text-[#d4d4d4] text-[13px] font-medium truncate">
-            Parry S
-          </span>
-          <HugeiconsIcon
-            icon={ArrowDownIcon}
-            size={13}
-            color="#4d4d4d"
-            strokeWidth={2}
-          />
-        </div>
-        <button className="text-[#4d4d4d] hover:text-[#a3a3a3] transition-colors shrink-0">
-          <HugeiconsIcon
-            icon={LogoutIcon}
-            size={16}
-            color="currentColor"
-            strokeWidth={1.5}
-          />
-        </button>
-      </div>
+      <SidebarUserChip />
     </aside>
   );
 }
