@@ -25,9 +25,7 @@ type ApiKey = {
   lastUsedAtMs: number | null;
 };
 
-const PLATFORM_TENANT =
-  process.env.NEXT_PUBLIC_WEAVEOS_TENANT_ADDRESS ??
-  "0xa7d0740b247a14ea578bf6f65b352d56e4fa6fdc8f69a6ce4b1276513bb85d2c";
+import { useZkLoginSession } from "@/lib/weaveos/useSession";
 
 const DEFAULT_SCOPES = [
   "workflows:read",
@@ -79,8 +77,9 @@ function GenerateForm({
   onGenerated: (secret: string, key: ApiKey) => void;
   onCancel: () => void;
 }) {
+  const session = useZkLoginSession();
+  const owner = session?.suiAddress ?? "";
   const [label, setLabel] = useState("");
-  const [owner, setOwner] = useState(PLATFORM_TENANT);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,10 +87,11 @@ function GenerateForm({
     setBusy(true);
     setError(null);
     try {
+      // ownerAddress is server-derived from the session cookie; we don't send it.
       const r = await fetch("/api/apikeys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerAddress: owner, label, scopes: DEFAULT_SCOPES }),
+        body: JSON.stringify({ label, scopes: DEFAULT_SCOPES }),
       });
       const json = await r.json();
       if (!r.ok) throw new Error(json.error ?? `HTTP ${r.status}`);
@@ -117,12 +117,9 @@ function GenerateForm({
         placeholder="Label (e.g. production-server-1)"
         className="bg-[#111] border border-[#1e1e1e] rounded-md px-3 py-2 text-[13px] text-[#d4d4d4] outline-none focus:border-[#2a2a2a]"
       />
-      <input
-        value={owner}
-        onChange={(e) => setOwner(e.target.value)}
-        placeholder="Owner address (0x…)"
-        className="bg-[#111] border border-[#1e1e1e] rounded-md px-3 py-2 text-[13px] text-[#d4d4d4] font-mono outline-none focus:border-[#2a2a2a]"
-      />
+      <div className="bg-[#111] border border-[#1e1e1e] rounded-md px-3 py-2 text-[12px] text-[#5a5a5a] font-mono">
+        Owner: <span className="text-[#a3a3a3]">{owner ? `${owner.slice(0, 10)}…${owner.slice(-4)}` : "—"}</span>
+      </div>
       <p className="text-[11px] text-[#5a5a5a]">
         Default scopes: <span className="font-mono">{DEFAULT_SCOPES.join(", ")}</span>
       </p>
@@ -169,66 +166,95 @@ function RevealedSecret({ secret, apiKey: k, onDone }: { secret: string; apiKey:
 }
 
 function SdkSnippet() {
-  const installSnippet = `pnpm add @weaveos/sdk @mysten/sui`;
-  const codeSnippet = `import { Weaveos } from "@weaveos/sdk";
+  const [tab, setTab] = useState<"node" | "curl">("node");
+  const installSnippet = `npm i @weaveos/sdk`;
+  const nodeSnippet = `import { WeaveosClient } from "@weaveos/sdk";
 
-const wos = new Weaveos({
-  packageId:       "0xde20ec…",  // weaveOS Move package on Sui testnet
-  productId:       "0x4e888c…",  // your registered Product
-  customerPrivkey: process.env.WEAVEOS_CUSTOMER_PRIVKEY!,
+const wos = new WeaveosClient({
+  apiKey: process.env.WEAVEOS_API_KEY!,         // wos_… from /developer
+  baseUrl: "http://localhost:3000",              // your weaveOS deployment
 });
 
-// Stage 1+2 — quote + payment authz (locks SUI into per-workflow escrow)
-const workflow = await wos.workflows.start({
-  successCriteria: {
+// Stream the full 7-stage lifecycle. ~30-40s total.
+for await (const ev of wos.workflows.start({
+  priceBaseUnits: 100_000_000,                   // 0.1 SUI escrow
+  criteria: {
     type: "all_of",
     criteria: [
-      { type: "exact",             path: "/ticket_status",  value: "closed" },
-      { type: "numeric_threshold", path: "/refund_amount",  op: "<=", value: 100 },
+      { type: "exact",             path: "/ticket_status", value: "closed" },
+      { type: "numeric_threshold", path: "/refund_amount", op: "<=", value: 100 },
     ],
   },
-  priceBaseUnits: 100_000_000,  // 0.1 SUI
-});
-
-// Stage 3 — record costs as your agent runs
-await workflow.recordCost({
-  provider: "0x…anthropic",
-  category: 0,                  // 0=model, 1=tool, 2=human, 3=compute
-  units: 12_000,
-  amount: 20_000_000,
-});
-
-// Stage 4–7 — verify → on-chain attestation → dispute window → settle
-await workflow.complete({
   outcome: { ticket_status: "closed", refund_amount: 47.5 },
-});`;
+})) {
+  if (ev.event === "stage")    console.log(\`\${ev.data.stage} \${ev.data.status}\`);
+  if (ev.event === "complete") console.log("workflow:", ev.data.workflowId);
+  if (ev.event === "error")    throw new Error(ev.data.message);
+}`;
+  const curlSnippet = `curl -N -X POST http://localhost:3000/api/workflows/start \\
+  -H "Authorization: Bearer $WEAVEOS_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "priceBaseUnits": 100000000,
+    "criteria": {
+      "type": "all_of",
+      "criteria": [
+        { "type": "exact",             "path": "/ticket_status", "value": "closed" },
+        { "type": "numeric_threshold", "path": "/refund_amount", "op": "<=", "value": 100 }
+      ]
+    },
+    "outcome": { "ticket_status": "closed", "refund_amount": 47.5 }
+  }'`;
+  const active = tab === "node" ? nodeSnippet : curlSnippet;
   return (
     <div className="bg-[#171718] border border-[#1e1e1e] rounded-[20px] px-5 py-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <HugeiconsIcon icon={SourceCodeIcon} size={14} color="#5a5a5a" strokeWidth={1.5} />
-          <span className="text-[14px] font-semibold text-white">@weaveos/sdk</span>
-          <span className="text-[11px] text-[#fbbf24] px-2 py-0.5 rounded-full bg-[#fbbf24]/10">
-            0.1.0-alpha
+          <span className="text-[14px] font-semibold text-white">Agent integration</span>
+          <span className="text-[11px] text-[#4ade80] px-2 py-0.5 rounded-full bg-[#4ade80]/10">
+            live
           </span>
         </div>
-        <CopyButton value={codeSnippet} />
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-[#0a0a0a] border border-[#272727] rounded-full p-0.5">
+            <button
+              onClick={() => setTab("node")}
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+                tab === "node" ? "bg-[#1e1e1e] text-white" : "text-[#5a5a5a] hover:text-[#a3a3a3]"
+              }`}
+            >
+              Node SDK
+            </button>
+            <button
+              onClick={() => setTab("curl")}
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+                tab === "curl" ? "bg-[#1e1e1e] text-white" : "text-[#5a5a5a] hover:text-[#a3a3a3]"
+              }`}
+            >
+              curl
+            </button>
+          </div>
+          <CopyButton value={active} />
+        </div>
       </div>
-      <div className="mb-2">
-        <span className="text-[11px] text-[#5a5a5a]">Install</span>
-        <pre className="bg-[#0a0a0a] border border-[#1e1e1e] rounded-md px-3 py-2 mt-1 text-[12px] font-mono text-[#a3a3a3] overflow-x-auto">
-          {installSnippet}
-        </pre>
-      </div>
+      {tab === "node" && (
+        <div className="mb-2">
+          <span className="text-[11px] text-[#5a5a5a]">Install</span>
+          <pre className="bg-[#0a0a0a] border border-[#1e1e1e] rounded-md px-3 py-2 mt-1 text-[12px] font-mono text-[#a3a3a3] overflow-x-auto">
+            {installSnippet}
+          </pre>
+        </div>
+      )}
       <div>
         <span className="text-[11px] text-[#5a5a5a]">Drive a workflow end-to-end</span>
         <pre className="bg-[#0a0a0a] border border-[#1e1e1e] rounded-md px-4 py-3 mt-1 text-[12px] font-mono text-[#a3a3a3] whitespace-pre-wrap overflow-x-auto">
-          {codeSnippet}
+          {active}
         </pre>
       </div>
       <p className="text-[11px] text-[#5a5a5a] mt-2">
-        0.1.0-alpha ships the type surface + high-level facade. Full runtime lands in 0.2.0. Source:{" "}
-        <code className="font-mono text-[#a3a3a3]">packages/sdk/</code>.
+        Mint an API key above. The endpoint streams NDJSON — every line is one
+        stage event. Same path the in-app &ldquo;+ Create workflow&rdquo; button uses.
       </p>
     </div>
   );
@@ -258,6 +284,7 @@ export default function DeveloperPage() {
     }
   }
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, []);
 
