@@ -111,10 +111,20 @@ export async function POST(req: NextRequest): Promise<Response> {
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
   const enc = new TextEncoder();
+  // Track whether the consumer is still listening. When they close the
+  // drawer mid-run (or the connection drops) the writable side is
+  // auto-closed; subsequent writes throw `Invalid state: WritableStream is
+  // closed`. Once we see one of those, stop trying to emit.
+  let writerOpen = true;
 
-  /** Emit one NDJSON event. The frontend splits on newlines. */
+  /** Emit one NDJSON event. Becomes a no-op once the consumer has hung up. */
   async function emit(event: string, data: Record<string, unknown>): Promise<void> {
-    await writer.write(enc.encode(JSON.stringify({ event, data }) + "\n"));
+    if (!writerOpen) return;
+    try {
+      await writer.write(enc.encode(JSON.stringify({ event, data }) + "\n"));
+    } catch {
+      writerOpen = false;
+    }
   }
 
   // Run the lifecycle in the background. We return the streaming response
@@ -290,7 +300,13 @@ export async function POST(req: NextRequest): Promise<Response> {
     } catch (err) {
       await emit("error", { message: (err as Error).message });
     } finally {
-      await writer.close();
+      // The writer may already be closed if the consumer hung up — swallow
+      // ERR_INVALID_STATE so it doesn't escape as an unhandledRejection.
+      try {
+        if (writerOpen) await writer.close();
+      } catch {
+        // already closed
+      }
     }
   })();
 
