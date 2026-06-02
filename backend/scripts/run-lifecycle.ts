@@ -189,8 +189,13 @@ async function main() {
     outcomeId: o.outcomeId,
     verify,
   });
-  log("7", `Settlement created: ${s.settlementId}`);
-  log("7", `  tx:               ${s.digest}`);
+  if (s.refunded) {
+    log("7", "REFUND branch — verifier verdict was failure; escrow returned to customer");
+    log("7", `  tx:               ${s.digest}`);
+  } else {
+    log("7", `Settlement created: ${s.settlementId}`);
+    log("7", `  tx:               ${s.digest}`);
+  }
 
   // === Verify post-state ===
   const afterCustomer = await balance(customerAddr);
@@ -203,9 +208,15 @@ async function main() {
   console.log(`Workflow     ${w.workflowId}`);
   console.log(`Execution    ${e.executionId}`);
   console.log(`Outcome      ${o.outcomeId}`);
-  console.log(`Settlement   ${s.settlementId}`);
-  console.log();
-  console.log(`Inspect: https://suiscan.xyz/testnet/object/${s.settlementId}`);
+  if (s.refunded) {
+    console.log(`Settlement   — (refunded)`);
+    console.log();
+    console.log(`Inspect tx:  https://suiscan.xyz/testnet/tx/${s.digest}`);
+  } else {
+    console.log(`Settlement   ${s.settlementId}`);
+    console.log();
+    console.log(`Inspect:     https://suiscan.xyz/testnet/object/${s.settlementId}`);
+  }
 }
 
 main().catch((err) => {

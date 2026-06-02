@@ -12,7 +12,8 @@
     "db:push": "drizzle-kit push",
     "db:migrate": "node --env-file=.env.local --import tsx backend/scripts/db-migrate.ts",
     "db:studio": "drizzle-kit studio",
-    "db:health": "node --env-file=.env.local --import tsx backend/scripts/db-health.ts"
+    "db:health": "node --env-file=.env.local --import tsx backend/scripts/db-health.ts",
+    "seed:agents": "node --env-file=.env.local --import tsx backend/scripts/seed-agents.ts"
   },
   "dependencies": {
     "@hugeicons/core-free-icons": "^4.1.3",

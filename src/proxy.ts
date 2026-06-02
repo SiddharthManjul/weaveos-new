@@ -29,6 +29,8 @@ const PROTECTED_PREFIXES = [
   "/developer",
   "/settings",
   "/pricing-intel",
+  "/agents",
+  "/marketplace",
 ];
 
 function isProtected(pathname: string): boolean {

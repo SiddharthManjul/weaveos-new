@@ -34,9 +34,19 @@ async function main() {
       try {
         await d.execute(sql.raw(stmt));
       } catch (e) {
-        const msg = (e as Error).message;
-        // Idempotent re-runs: skip "already exists" errors so we can re-apply.
-        if (msg.includes("already exists")) {
+        const err = e as Error & { cause?: { code?: string }; code?: string };
+        const msg = err.message ?? "";
+        // pg error codes for "already exists" cases:
+        //   42P07 = relation/table/index already exists
+        //   42710 = duplicate object (index, constraint, etc.)
+        //   42701 = duplicate column
+        const code = err.cause?.code ?? err.code;
+        const isAlreadyExists =
+          msg.includes("already exists") ||
+          code === "42P07" ||
+          code === "42710" ||
+          code === "42701";
+        if (isAlreadyExists) {
           console.log(`  (skipped — already exists)`);
           continue;
         }
