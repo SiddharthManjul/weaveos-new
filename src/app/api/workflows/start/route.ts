@@ -34,6 +34,7 @@ import {
 import { encodeCriteriaBytes, type SuccessCriterion } from "@/lib/weaveos/dsl";
 import { weaveosConfig } from "@/lib/weaveos/config";
 import { resolveCaller } from "@/lib/weaveos/auth";
+import { linkWorkflowToAgent } from "@/lib/db/agents";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -45,6 +46,9 @@ type StartBody = {
   outcome?: Record<string, unknown>;
   costItems?: LifecycleCostItem[];
   disputeWindowSeconds?: number;
+  /** When the workflow is created through the marketplace, tag it with the
+   *  fulfilling agent so its track record reflects the result. */
+  agentId?: number;
 };
 
 function need(name: string): string {
@@ -162,6 +166,15 @@ export async function POST(req: NextRequest): Promise<Response> {
         quoteId: q.quoteId,
         paymentBaseUnits: priceBaseUnits,
       });
+      // Marketplace link: tag the workflow with the fulfilling agent so its
+      // track record updates as soon as the lifecycle hits settle.
+      if (body.agentId) {
+        try {
+          await linkWorkflowToAgent(w.workflowId, body.agentId);
+        } catch {
+          // best-effort; don't fail the run on a link insert
+        }
+      }
       await emit("stage", {
         stage: "workflow",
         status: "done",
@@ -250,13 +263,26 @@ export async function POST(req: NextRequest): Promise<Response> {
         outcomeId: o.outcomeId,
         verify,
       });
-      await emit("stage", {
-        stage: "settle",
-        status: "done",
-        id: s.settlementId,
-        digest: s.digest,
-        explorer: explorerObj(s.settlementId),
-      });
+      // On the refund branch there's no Settlement object — the Move
+      // contract returns the escrow to the customer. Surface a refund stage
+      // result instead of the settlement deeplink.
+      if (s.refunded) {
+        await emit("stage", {
+          stage: "settle",
+          status: "done",
+          refunded: true,
+          digest: s.digest,
+          explorer: explorerTx(s.digest),
+        });
+      } else {
+        await emit("stage", {
+          stage: "settle",
+          status: "done",
+          id: s.settlementId!,
+          digest: s.digest,
+          explorer: explorerObj(s.settlementId!),
+        });
+      }
 
       // Refresh the Postgres mirror so the new workflow appears immediately.
       try {
@@ -271,8 +297,11 @@ export async function POST(req: NextRequest): Promise<Response> {
         executionId: e.executionId,
         outcomeId: o.outcomeId,
         settlementId: s.settlementId,
+        refunded: s.refunded,
         workflowExplorer: explorerObj(w.workflowId),
-        settlementExplorer: explorerObj(s.settlementId),
+        settlementExplorer: s.settlementId
+          ? explorerObj(s.settlementId)
+          : explorerTx(s.digest),
       });
     } catch (err) {
       await emit("error", { message: (err as Error).message });

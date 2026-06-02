@@ -102,7 +102,7 @@ async function findCandidates(): Promise<{
 
 type SettleAttempt = {
   workflowId: string;
-  status: "settled" | "failed" | "skipped";
+  status: "settled" | "refunded" | "failed" | "skipped";
   settlementId?: string;
   digest?: string;
   reason?: string;
@@ -228,8 +228,8 @@ async function reverifyAndSettle(
     });
     return {
       workflowId: candidate.workflowId,
-      status: "settled",
-      settlementId: s.settlementId,
+      status: s.refunded ? "refunded" : "settled",
+      settlementId: s.settlementId ?? undefined,
       digest: s.digest,
     };
   } catch (e) {
