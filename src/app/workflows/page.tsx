@@ -15,7 +15,8 @@ import {
   PlayCircleIcon,
 } from "@hugeicons/core-free-icons";
 import { LifecycleDemoDrawer } from "@/components/LifecycleDemoDrawer";
-import { CreateWorkflowDrawer } from "@/components/CreateWorkflowDrawer";
+import { CreateWorkflowDrawer, type CreateWorkflowPrefill } from "@/components/CreateWorkflowDrawer";
+import { DisputeModal } from "@/components/DisputeModal";
 
 type Status = "Settled" | "Executing" | "Verified" | "Quoted" | "Disputed" | "Refunded";
 type DateRange = "Last 7 Days" | "Last 30 Days" | "Last 90 Days" | "All Time";
@@ -217,6 +218,57 @@ export default function WorkflowsPage() {
   const [demoOpen, setDemoOpen]       = useState(false);
   const [demoMode, setDemoMode]       = useState<"success" | "failure">("success");
   const [createOpen, setCreateOpen]   = useState(false);
+  const [retryPrefill, setRetryPrefill] = useState<CreateWorkflowPrefill | null>(null);
+  const [disputeFor, setDisputeFor]   = useState<{ workflowId: string; outcomeId: string } | null>(null);
+  const [rowBusy, setRowBusy]         = useState<string | null>(null); // id of row currently fetching
+
+  // Click handlers — wired below in the table rows.
+  async function handleRetry(id: string): Promise<void> {
+    setRowBusy(id);
+    try {
+      const r = await fetch(`/api/sui/workflow/${id}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const { workflow } = (await r.json()) as {
+        workflow: { quote: { price: number; successCriteria: string } | null };
+      };
+      if (!workflow.quote) throw new Error("workflow has no quote — cannot retry");
+      let criteriaTemplate: unknown = {};
+      try {
+        criteriaTemplate = JSON.parse(workflow.quote.successCriteria) as unknown;
+      } catch {
+        criteriaTemplate = {};
+      }
+      setRetryPrefill({
+        agentId: 0, // retry isn't tied to a marketplace agent
+        agentName: `Retry of ${id.slice(0, 8)}…${id.slice(-4)}`,
+        priceBaseUnits: workflow.quote.price,
+        criteriaTemplate,
+      });
+    } catch (e) {
+      // eslint-disable-next-line no-alert
+      alert(`Retry failed: ${(e as Error).message}`);
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
+  async function handleDispute(id: string): Promise<void> {
+    setRowBusy(id);
+    try {
+      const r = await fetch(`/api/sui/workflow/${id}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const { workflow } = (await r.json()) as { workflow: { outcome: { id: string } | null } };
+      if (!workflow.outcome?.id) {
+        throw new Error("dispute requires an Outcome on chain — try again after verifier finishes");
+      }
+      setDisputeFor({ workflowId: id, outcomeId: workflow.outcome.id });
+    } catch (e) {
+      // eslint-disable-next-line no-alert
+      alert(`Dispute failed: ${(e as Error).message}`);
+    } finally {
+      setRowBusy(null);
+    }
+  }
 
   const fetchWorkflows = async () => {
     try {
@@ -356,6 +408,26 @@ export default function WorkflowsPage() {
 
       <CreateWorkflowDrawer open={createOpen} onClose={() => setCreateOpen(false)} />
 
+      {/* Retry — re-run the same quote terms */}
+      <CreateWorkflowDrawer
+        open={retryPrefill !== null}
+        onClose={() => setRetryPrefill(null)}
+        prefill={retryPrefill ?? undefined}
+      />
+
+      {/* Raise dispute */}
+      {disputeFor && (
+        <DisputeModal
+          workflowId={disputeFor.workflowId}
+          outcomeId={disputeFor.outcomeId}
+          onClose={() => setDisputeFor(null)}
+          onFiled={() => {
+            setDisputeFor(null);
+            void fetchWorkflows();
+          }}
+        />
+      )}
+
       {/* Table card */}
       <div className="relative flex flex-col flex-1 min-h-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] overflow-hidden">
         <div className="md:hidden absolute inset-y-0 right-0 w-10 z-10 pointer-events-none rounded-r-[20px]" style={{ background: "linear-gradient(to right, transparent, #171718)" }} />
@@ -427,25 +499,38 @@ export default function WorkflowsPage() {
 
                       <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                         <Tooltip label="View workflow">
-                          <button className="text-[#6b6b6b] hover:text-[#a3a3a3] transition-colors">
+                          <button
+                            onClick={() => router.push(`/workflows/${w.id}`)}
+                            disabled={rowBusy === w.id}
+                            className="text-[#6b6b6b] hover:text-[#a3a3a3] disabled:opacity-30 transition-colors"
+                          >
                             <HugeiconsIcon icon={EyeIcon} size={15} color="currentColor" strokeWidth={1.5} />
                           </button>
                         </Tooltip>
                         <Tooltip label="Copy ID">
                           <button
                             onClick={() => navigator.clipboard.writeText(w.id)}
-                            className="text-[#6b6b6b] hover:text-[#a3a3a3] transition-colors"
+                            disabled={rowBusy === w.id}
+                            className="text-[#6b6b6b] hover:text-[#a3a3a3] disabled:opacity-30 transition-colors"
                           >
                             <HugeiconsIcon icon={CopyIcon} size={15} color="currentColor" strokeWidth={1.5} />
                           </button>
                         </Tooltip>
-                        <Tooltip label="Retry workflow">
-                          <button className="text-[#9b3a3a] hover:text-[#f87171] transition-colors">
+                        <Tooltip label="Retry workflow (re-run with same quote)">
+                          <button
+                            onClick={() => handleRetry(w.id)}
+                            disabled={rowBusy === w.id}
+                            className="text-[#9b3a3a] hover:text-[#f87171] disabled:opacity-30 transition-colors"
+                          >
                             <HugeiconsIcon icon={RefreshIcon} size={15} color="currentColor" strokeWidth={1.5} />
                           </button>
                         </Tooltip>
-                        <Tooltip label="Raise dispute">
-                          <button className="text-[#9b3a3a] hover:text-[#f87171] transition-colors">
+                        <Tooltip label={w.status === "Verified" ? "Raise dispute" : "Dispute only available while Verified"}>
+                          <button
+                            onClick={() => handleDispute(w.id)}
+                            disabled={rowBusy === w.id || w.status !== "Verified"}
+                            className="text-[#9b3a3a] hover:text-[#f87171] disabled:opacity-30 transition-colors"
+                          >
                             <HugeiconsIcon icon={AlertDiamondIcon} size={15} color="currentColor" strokeWidth={1.5} />
                           </button>
                         </Tooltip>
