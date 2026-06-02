@@ -38,6 +38,9 @@ type StageRecord = {
   walrus?: Record<string, string>;
   signaturePrefix?: string;
   waitMs?: number;
+  /** Settle stage only — true when the verifier verdict was failure and the
+   *  Move contract took the refund branch (no Settlement object created). */
+  refunded?: boolean;
 };
 
 type StageDef = {
@@ -150,6 +153,7 @@ export function StreamingLifecycleStages({
           walrus: msg.data.walrus as Record<string, string> | undefined,
           signaturePrefix: msg.data.signaturePrefix as string | undefined,
           waitMs: msg.data.waitMs as number | undefined,
+          refunded: msg.data.refunded as boolean | undefined,
         },
       }));
     } else if (msg.event === "complete") {
@@ -205,7 +209,7 @@ export function StreamingLifecycleStages({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[14px] font-semibold text-white">
-                    {idx + 1}. {def.title}
+                    {idx + 1}. {def.key === "settle" && rec.refunded ? "Refund (escrow returned)" : def.title}
                   </span>
                   <span
                     className="text-[11px] font-medium uppercase tracking-wider"
@@ -221,7 +225,11 @@ export function StreamingLifecycleStages({
                     )}
                   </span>
                 </div>
-                <p className="text-[12px] text-[#5a5a5a] mt-0.5">{def.hint}</p>
+                <p className="text-[12px] text-[#5a5a5a] mt-0.5">
+                  {def.key === "settle" && rec.refunded
+                    ? "Verifier verdict was failure — escrow refunded to customer in a single PTB"
+                    : def.hint}
+                </p>
                 {(rec.id || rec.digest || rec.signaturePrefix || rec.walrus) && (
                   <div className="mt-2 flex flex-col gap-1.5">
                     {rec.id && (
