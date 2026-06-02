@@ -270,13 +270,23 @@ export async function POST(req: NextRequest): Promise<Response> {
         outcomeId: o.outcomeId,
         verify,
       }, zk);
-      await emit("stage", {
-        stage: "settle",
-        status: "done",
-        id: s.settlementId,
-        digest: s.digest,
-        explorer: explorerObj(s.settlementId),
-      });
+      if (s.refunded) {
+        await emit("stage", {
+          stage: "settle",
+          status: "done",
+          refunded: true,
+          digest: s.digest,
+          explorer: explorerTx(s.digest),
+        });
+      } else {
+        await emit("stage", {
+          stage: "settle",
+          status: "done",
+          id: s.settlementId!,
+          digest: s.digest,
+          explorer: explorerObj(s.settlementId!),
+        });
+      }
 
       // Refresh the Postgres mirror so the new workflow appears in the
       // dashboard immediately. Best-effort; don't fail the demo if the
@@ -294,8 +304,11 @@ export async function POST(req: NextRequest): Promise<Response> {
         executionId: e.executionId,
         outcomeId: o.outcomeId,
         settlementId: s.settlementId,
+        refunded: s.refunded,
         workflowExplorer: explorerObj(w.workflowId),
-        settlementExplorer: explorerObj(s.settlementId),
+        settlementExplorer: s.settlementId
+          ? explorerObj(s.settlementId)
+          : explorerTx(s.digest),
       });
     } catch (err) {
       await emit("error", { message: (err as Error).message });
