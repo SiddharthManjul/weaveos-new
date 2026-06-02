@@ -217,6 +217,73 @@ export const auditLog = pgTable(
   }),
 );
 
+// ─── Agent marketplace ──────────────────────────────────────────────────────
+
+/** Registered agent listings — the supply side of the marketplace. */
+export const agents = pgTable(
+  "agents",
+  {
+    id: serial("id").primaryKey(),
+    ownerAddress: text("owner_address").notNull(),
+    /** URL-safe identifier — used in /agents/[slug]. */
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    /** Short tags clients can filter by — ["support", "refund", "tickets"]. */
+    taskTags: jsonb("task_tags").$type<string[]>().notNull().default([]),
+    /** Ordered workflow steps the agent executes. Stored as a portable JSON
+     *  shape so different agents can declare radically different processes. */
+    workflowSpec: jsonb("workflow_spec")
+      .$type<{
+        steps: Array<{
+          kind: "model_call" | "tool_call" | "human_review" | "compute";
+          label: string;
+          provider?: string;
+          costNote?: string;
+        }>;
+      }>()
+      .notNull()
+      .default({ steps: [] }),
+    /** Default success-criteria template (uses the same DSL Quotes use). */
+    criteriaTemplate: jsonb("criteria_template").$type<unknown>().notNull().default({}),
+    /** Sample outcome JSON the agent declares "looks like a successful run".
+     *  Pre-fills the hire form so the demo run satisfies the criteria by
+     *  default — clients can edit before submitting. */
+    exampleOutcome: jsonb("example_outcome").$type<Record<string, unknown>>().notNull().default({}),
+    /** "fixed" today; "per_token" / "tiered" in the future. */
+    pricingModel: text("pricing_model").notNull().default("fixed"),
+    /** Default escrow price for one workflow, in coin base units. */
+    priceBaseUnits: bigint("price_base_units", { mode: "number" }).notNull(),
+    /** "active" / "paused" / "deprecated". Only "active" appears in the marketplace. */
+    status: text("status").notNull().default("active"),
+    createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
+    updatedAtMs: bigint("updated_at_ms", { mode: "number" }).notNull(),
+  },
+  (t) => ({
+    slugUnique: uniqueIndex("agents_slug_unique").on(t.slug),
+    ownerIdx: index("agents_owner_idx").on(t.ownerAddress),
+    statusIdx: index("agents_status_idx").on(t.status),
+  }),
+);
+
+/** Off-chain link from a chain Workflow back to the agent that fulfilled it.
+ *  Set when a client hires an agent through the marketplace; lets the
+ *  agent's track record (settled count, dispute rate) be computed without
+ *  bloating the Move contract with marketplace metadata. */
+export const workflowAgentLinks = pgTable(
+  "workflow_agent_links",
+  {
+    workflowId: text("workflow_id").primaryKey(),
+    agentId: integer("agent_id").notNull(),
+    createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
+  },
+  (t) => ({
+    agentIdx: index("wfal_agent_idx").on(t.agentId),
+  }),
+);
+
+// ─── Operational ────────────────────────────────────────────────────────────
+
 /** Indexer high-water marks. One row per event type the indexer pages through. */
 export const indexerCursor = pgTable("indexer_cursor", {
   eventType: text("event_type").primaryKey(),
@@ -243,3 +310,7 @@ export type IndexedSettlement = typeof indexedSettlements.$inferSelect;
 export type IndexedDispute = typeof indexedDisputes.$inferSelect;
 export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
+export type Agent = typeof agents.$inferSelect;
+export type NewAgent = typeof agents.$inferInsert;
+export type WorkflowAgentLink = typeof workflowAgentLinks.$inferSelect;
+export type NewWorkflowAgentLink = typeof workflowAgentLinks.$inferInsert;

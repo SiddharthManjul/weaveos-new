@@ -572,7 +572,7 @@ export async function settleWorkflowDev(
   signer: Ed25519Keypair,
   args: SettleWorkflowArgs,
   zk?: ZkLoginContext,
-): Promise<{ settlementId: string; digest: string }> {
+): Promise<{ settlementId: string | null; refunded: boolean; digest: string }> {
   const tx = new Transaction();
   const pkg = weaveosConfig.packageId;
   const { payload, signatureHex, signerPubkeyHex } = args.verify;
@@ -655,6 +655,13 @@ export async function settleWorkflowDev(
   });
 
   const r = await submit(client, signer, tx, "settleWorkflowDev", zk);
+  // On failure-path the Move contract takes the refund branch and creates no
+  // Settlement object — only the customer's coin is transferred back. Detect
+  // the branch from the verifier's verdict (we already have it in args) and
+  // pick the right object to surface.
+  if (!args.verify.success) {
+    return { settlementId: null, refunded: true, digest: r.digest };
+  }
   const settlementId = createdObjectOfType(r, "::settlement::Settlement");
-  return { settlementId, digest: r.digest };
+  return { settlementId, refunded: false, digest: r.digest };
 }
