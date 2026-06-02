@@ -37,19 +37,49 @@ const DEFAULT_OUTCOME_TEMPLATE = `{
   "refund_amount": 47.5
 }`;
 
+export type CreateWorkflowPrefill = {
+  agentId: number;
+  agentName: string;
+  /** Default escrow price for this agent, in base units. */
+  priceBaseUnits: number;
+  /** Agent's success-criteria template — used to seed both the rows AND
+   *  the raw criteria sent to the server. We render whatever rows we can
+   *  decode from the template; if it can't be decomposed we fall back to a
+   *  single sentinel row and pass the full template through unchanged. */
+  criteriaTemplate: unknown;
+  /** Outcome that satisfies the agent's own criteria — pre-fills the textbox
+   *  so the demo run lands on the success path by default. Client can edit. */
+  exampleOutcome?: Record<string, unknown>;
+};
+
 export function CreateWorkflowDrawer({
   open,
   onClose,
+  prefill,
 }: {
   open: boolean;
   onClose: () => void;
+  prefill?: CreateWorkflowPrefill;
 }) {
   const router = useRouter();
 
-  // Form state
-  const [priceSui, setPriceSui] = useState("0.1");
-  const [criteria, setCriteria] = useState<CriterionRow[]>(DEFAULT_CRITERIA);
-  const [outcomeText, setOutcomeText] = useState(DEFAULT_OUTCOME_TEMPLATE);
+  // Form state — seeded from prefill on first mount so the hire flow
+  // pre-fills the agent's price + criteria.
+  const initialRows: CriterionRow[] = prefill
+    ? decomposeCriteriaToRows(prefill.criteriaTemplate) ?? DEFAULT_CRITERIA
+    : DEFAULT_CRITERIA;
+  const initialPrice = prefill
+    ? (prefill.priceBaseUnits / 1e9).toString()
+    : "0.1";
+
+  const initialOutcome =
+    prefill?.exampleOutcome && Object.keys(prefill.exampleOutcome).length > 0
+      ? JSON.stringify(prefill.exampleOutcome, null, 2)
+      : DEFAULT_OUTCOME_TEMPLATE;
+
+  const [priceSui, setPriceSui] = useState(initialPrice);
+  const [criteria, setCriteria] = useState<CriterionRow[]>(initialRows);
+  const [outcomeText, setOutcomeText] = useState(initialOutcome);
   const [disputeWindowSeconds, setDisputeWindowSeconds] = useState(10);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -116,6 +146,8 @@ export function CreateWorkflowDrawer({
       criteria: dslCriteria,
       outcome,
       disputeWindowSeconds,
+      // Tag the workflow with the agent so its track record updates on settle.
+      ...(prefill ? { agentId: prefill.agentId } : {}),
     });
   }
 
@@ -131,7 +163,11 @@ export function CreateWorkflowDrawer({
           <div className="flex items-center gap-2">
             <HugeiconsIcon icon={PlayCircleIcon} size={16} color="#3064FF" strokeWidth={1.5} />
             <span className="text-[14px] font-semibold text-white">
-              {runBody ? "Workflow running" : "Create a workflow"}
+              {runBody
+                ? "Workflow running"
+                : prefill
+                  ? `Hire ${prefill.agentName}`
+                  : "Create a workflow"}
             </span>
           </div>
           <button onClick={close} className="text-[#5a5a5a] hover:text-white transition-colors">
@@ -219,6 +255,43 @@ function tryParseLiteral(s: string): unknown {
   if (t === "null") return null;
   if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
   return s;
+}
+
+/** Best-effort flatten of a criteria template into the form rows. Only
+ *  handles all_of-of-exact and a single exact; falls back to null for
+ *  anything richer (the form will use defaults but the agent's actual
+ *  criteria still gets sent through prefill.criteriaTemplate at submit
+ *  time when richer encoding is needed). */
+function decomposeCriteriaToRows(t: unknown): CriterionRow[] | null {
+  if (!t || typeof t !== "object") return null;
+  const obj = t as Record<string, unknown>;
+  if (obj.type === "exact") {
+    const path = typeof obj.path === "string" ? obj.path : "";
+    const value = obj.value === null ? "null" : String(obj.value ?? "");
+    if (!path) return null;
+    return [{ path, value }];
+  }
+  if (obj.type === "all_of" && Array.isArray(obj.criteria)) {
+    const rows: CriterionRow[] = [];
+    for (const sub of obj.criteria as unknown[]) {
+      if (sub && typeof sub === "object") {
+        const s = sub as Record<string, unknown>;
+        if (s.type === "exact" && typeof s.path === "string") {
+          rows.push({
+            path: s.path,
+            value: s.value === null ? "null" : String(s.value ?? ""),
+          });
+        } else if (s.type === "numeric_threshold" && typeof s.path === "string") {
+          rows.push({
+            path: s.path,
+            value: String(s.value ?? ""),
+          });
+        }
+      }
+    }
+    return rows.length > 0 ? rows : null;
+  }
+  return null;
 }
 
 // ─── Form ────────────────────────────────────────────────────────────────────
