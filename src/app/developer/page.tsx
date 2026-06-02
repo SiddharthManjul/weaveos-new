@@ -166,8 +166,29 @@ function RevealedSecret({ secret, apiKey: k, onDone }: { secret: string; apiKey:
 }
 
 function SdkSnippet() {
-  const [tab, setTab] = useState<"node" | "curl">("node");
+  const [tab, setTab] = useState<"mcp" | "node" | "curl">("mcp");
   const installSnippet = `npm i @weaveos/sdk`;
+  const baseUrl =
+    typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+  const mcpConfigSnippet = `// Claude Desktop / Cursor — claude_desktop_config.json
+{
+  "mcpServers": {
+    "weaveos": {
+      "url": "${baseUrl}/api/mcp",
+      "transport": "streamable-http",
+      "headers": {
+        "Authorization": "Bearer wos_<paste_your_api_key>"
+      }
+    }
+  }
+}
+
+// Once connected, your agent gets two tools:
+//   • register_agent  → list yourself in the weaveOS marketplace
+//   • start_workflow  → run quote → escrow → execution → verify → settle
+//
+// Discovery:  GET ${baseUrl}/.well-known/mcp.json
+// Manual:     GET ${baseUrl}/api/mcp  (with Accept: application/json)`;
   const nodeSnippet = `import { WeaveosClient } from "@weaveos/sdk";
 
 const wos = new WeaveosClient({
@@ -205,7 +226,7 @@ for await (const ev of wos.workflows.start({
     },
     "outcome": { "ticket_status": "closed", "refund_amount": 47.5 }
   }'`;
-  const active = tab === "node" ? nodeSnippet : curlSnippet;
+  const active = tab === "mcp" ? mcpConfigSnippet : tab === "node" ? nodeSnippet : curlSnippet;
   return (
     <div className="bg-[#171718] border border-[#1e1e1e] rounded-[20px] px-5 py-4">
       <div className="flex items-center justify-between mb-3">
@@ -218,6 +239,14 @@ for await (const ev of wos.workflows.start({
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center bg-[#0a0a0a] border border-[#272727] rounded-full p-0.5">
+            <button
+              onClick={() => setTab("mcp")}
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+                tab === "mcp" ? "bg-[#1e1e1e] text-white" : "text-[#5a5a5a] hover:text-[#a3a3a3]"
+              }`}
+            >
+              MCP
+            </button>
             <button
               onClick={() => setTab("node")}
               className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
@@ -247,14 +276,28 @@ for await (const ev of wos.workflows.start({
         </div>
       )}
       <div>
-        <span className="text-[11px] text-[#5a5a5a]">Drive a workflow end-to-end</span>
+        <span className="text-[11px] text-[#5a5a5a]">
+          {tab === "mcp"
+            ? "Add weaveOS as a skill to any MCP-capable agent runtime"
+            : "Drive a workflow end-to-end"}
+        </span>
         <pre className="bg-[#0a0a0a] border border-[#1e1e1e] rounded-md px-4 py-3 mt-1 text-[12px] font-mono text-[#a3a3a3] whitespace-pre-wrap overflow-x-auto">
           {active}
         </pre>
       </div>
       <p className="text-[11px] text-[#5a5a5a] mt-2">
-        Mint an API key above. The endpoint streams NDJSON — every line is one
-        stage event. Same path the in-app &ldquo;+ Create workflow&rdquo; button uses.
+        {tab === "mcp" ? (
+          <>
+            Spec-compliant Streamable HTTP transport. Once added to your agent
+            runtime, weaveOS shows up alongside any other skill. Mint an API key
+            above and paste it into the config.
+          </>
+        ) : (
+          <>
+            Mint an API key above. The endpoint streams NDJSON — every line is one
+            stage event. Same path the in-app &ldquo;+ Create workflow&rdquo; button uses.
+          </>
+        )}
       </p>
     </div>
   );
