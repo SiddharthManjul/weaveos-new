@@ -13,6 +13,7 @@ import {
   DeveloperIcon,
   SettingsIcon,
   CancelIcon,
+  StoreIcon,
 } from "@hugeicons/core-free-icons";
 
 import { SidebarUserChip } from "@/components/SidebarUserChip";
@@ -31,6 +32,13 @@ type NavSection = {
 };
 
 const navSections: NavSection[] = [
+  {
+    label: "Marketplace",
+    items: [
+      { name: "Hire an agent", icon: StoreIcon, href: "/marketplace" },
+      { name: "Agents", icon: UserGroupIcon, href: "/agents" },
+    ],
+  },
   {
     label: "Operate",
     items: [
