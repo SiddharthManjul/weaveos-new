@@ -95,8 +95,22 @@ export default function AgentDetailPage({ params }: { params: Promise<{ slug: st
 
   if (!agent) {
     return (
-      <div className="flex flex-col h-full overflow-y-auto p-6 gap-4">
-        <span className="text-[#5a5a5a] text-[13px]">Loading…</span>
+      <div className="flex flex-col h-full overflow-y-auto p-6 gap-4 fade-in">
+        <div className="flex items-center gap-4">
+          <div className="skeleton rounded-2xl h-16 w-16" />
+          <div className="flex flex-col gap-2 flex-1 max-w-md">
+            <div className="skeleton rounded-md h-5 w-1/2" />
+            <div className="skeleton rounded-md h-3 w-3/4" />
+            <div className="skeleton rounded-md h-3 w-2/3" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+          <div className="skeleton rounded-[20px] h-24" />
+          <div className="skeleton rounded-[20px] h-24" />
+          <div className="skeleton rounded-[20px] h-24" />
+        </div>
+        <div className="skeleton rounded-[20px] h-40 mt-2" />
+        <div className="skeleton rounded-[20px] h-40" />
       </div>
     );
   }
