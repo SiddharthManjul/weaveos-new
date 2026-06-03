@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { TopNav } from "./TopNav";
+import { RouteTransitionLoader } from "./RouteTransitionLoader";
 
 export function ShellLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -35,6 +36,9 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex flex-1 overflow-hidden">
+      {/* Logo overlay during route transitions */}
+      <RouteTransitionLoader />
+
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
