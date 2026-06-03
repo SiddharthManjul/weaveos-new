@@ -253,8 +253,48 @@ export default function WorkflowDetailPage({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-[#5a5a5a] text-[14px]">
-        Loading from Sui testnet…
+      <div className="flex flex-col h-full overflow-y-auto p-6 gap-4 fade-in">
+        {/* Header skeleton */}
+        <div className="bg-[#171718] border border-[#1e1e1e] rounded-[20px] px-5 py-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="skeleton rounded-md h-5 w-24" />
+              <div className="skeleton rounded-md h-3 w-40" />
+              <div className="skeleton rounded-full h-5 w-16" />
+            </div>
+            <div className="skeleton rounded-md h-3 w-28" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex flex-col gap-2">
+                <div className="skeleton rounded-md h-2.5 w-16" />
+                <div className="skeleton rounded-md h-4 w-24" />
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Stage cards skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="bg-[#171718] border border-[#1e1e1e] rounded-[20px] px-5 py-4 flex flex-col gap-3"
+            >
+              <div className="flex items-center justify-between">
+                <div className="skeleton rounded-md h-3.5 w-32" />
+                <div className="skeleton rounded-md h-3 w-20" />
+              </div>
+              <div className="flex flex-col gap-2 pt-1">
+                {Array.from({ length: 4 }).map((_, j) => (
+                  <div key={j} className="grid grid-cols-[120px_1fr] gap-3">
+                    <div className="skeleton rounded-md h-3" />
+                    <div className="skeleton rounded-md h-3" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

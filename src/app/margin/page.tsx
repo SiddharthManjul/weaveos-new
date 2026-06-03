@@ -273,8 +273,13 @@ export default function MarginPage() {
         <PLWaterfallChart data={waterfall} />
       </div>
       {loading ? (
-        <div className="bg-[#171718] rounded-[20px] border border-[#1e1e1e] py-16 flex items-center justify-center text-[#5a5a5a] text-[13px]">
-          Loading from Sui testnet…
+        <div className="bg-[#171718] rounded-[20px] border border-[#1e1e1e] p-5 flex flex-col gap-3 fade-in">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4">
+              <div className="skeleton rounded-md h-3 flex-1" />
+              <div className="skeleton rounded-md h-3 w-24" />
+            </div>
+          ))}
         </div>
       ) : error ? (
         <div className="bg-[#171718] rounded-[20px] border border-[#1e1e1e] py-16 flex items-center justify-center text-[#f87171] text-[13px]">

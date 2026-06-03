@@ -304,6 +304,34 @@ export default function WalrusPage() {
         />
       </div>
 
+      {/* Loading skeleton — list of placeholder rows under the stat cards. */}
+      {loading && !data && (
+        <div className="flex flex-col gap-3 fade-in">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="bg-[#171718] border border-[#1e1e1e] rounded-[20px] overflow-hidden"
+            >
+              <div className="px-5 py-4 border-b border-[#1e1e1e] flex items-center gap-2">
+                <div className="skeleton rounded-md h-3.5 w-32" />
+                <div className="skeleton rounded-full h-5 w-8" />
+              </div>
+              {Array.from({ length: 3 }).map((_, j) => (
+                <div
+                  key={j}
+                  className="flex items-center gap-3 px-5 py-3 border-t border-[#1e1e1e]"
+                >
+                  <div className="skeleton rounded-md h-3 w-3" />
+                  <div className="skeleton rounded-md h-3 flex-1 max-w-md" />
+                  <div className="skeleton rounded-full h-4 w-20 hidden sm:block" />
+                  <div className="skeleton rounded-md h-3 w-16" />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Error / empty */}
       {error && (
         <div className="bg-[#3a1818] border border-[#ef4444] rounded-[16px] px-4 py-3">

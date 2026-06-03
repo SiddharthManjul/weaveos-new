@@ -446,8 +446,27 @@ export default function WorkflowsPage() {
             {/* Rows */}
             <div className="flex flex-col overflow-y-auto min-h-0">
               {loading ? (
-                <div className="flex flex-1 items-center justify-center py-16 border-t border-dashed border-[#272727]">
-                  <span className="text-[#5a5a5a] text-[13px]">Loading from Sui testnet…</span>
+                <div className="flex flex-col fade-in">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={`grid ${COLS} items-center px-6 py-3.5 border-t border-dashed border-[#272727]`}
+                    >
+                      <div className="skeleton rounded-md h-3" />
+                      <div className="skeleton rounded-md h-3 w-3/4" />
+                      <div className="skeleton rounded-md h-3 w-2/3" />
+                      <div className="skeleton rounded-md h-3 w-2/3" />
+                      <div className="skeleton rounded-md h-3 w-1/2" />
+                      <div className="skeleton rounded-full h-5 w-16" />
+                      <div className="skeleton rounded-md h-3 w-12" />
+                      <div className="flex items-center gap-2 justify-self-end">
+                        <div className="skeleton rounded-md h-4 w-4" />
+                        <div className="skeleton rounded-md h-4 w-4" />
+                        <div className="skeleton rounded-md h-4 w-4" />
+                        <div className="skeleton rounded-md h-4 w-4" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : error ? (
                 <div className="flex flex-1 items-center justify-center py-16 border-t border-dashed border-[#272727]">
