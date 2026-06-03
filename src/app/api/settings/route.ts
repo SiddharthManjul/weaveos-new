@@ -38,6 +38,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({
         settings: {
           tenantAddress: addr,
+          orgName: "",
+          displayName: "",
+          timezone: "America/Los_Angeles",
+          defaultCurrency: "USD",
+          notifyEmail: "",
+          notifySlackUrl: "",
+          notifyEvents: [],
           webhookUrl: "",
           signingSecret: "",
           topics: [],
@@ -50,6 +57,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       settings: {
         tenantAddress: r.tenantAddress,
+        orgName: r.orgName,
+        displayName: r.displayName,
+        timezone: r.timezone,
+        defaultCurrency: r.defaultCurrency,
+        notifyEmail: r.notifyEmail,
+        notifySlackUrl: r.notifySlackUrl,
+        notifyEvents: r.notifyEvents,
         webhookUrl: r.webhookUrl,
         // Decrypt the signing secret for client display (over TLS only).
         signingSecret: r.signingSecretEncrypted ? decrypt(r.signingSecretEncrypted) : "",
@@ -68,6 +82,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
 
   type Body = {
+    orgName?: string;
+    displayName?: string;
+    timezone?: string;
+    defaultCurrency?: string;
+    notifyEmail?: string;
+    notifySlackUrl?: string;
+    notifyEvents?: string[];
     webhookUrl?: string;
     signingSecret?: string;
     topics?: string[];
@@ -98,6 +119,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const record: NewTenantSettings = {
     tenantAddress,
+    orgName: body.orgName ?? existing[0]?.orgName ?? "",
+    displayName: body.displayName ?? existing[0]?.displayName ?? "",
+    timezone: body.timezone ?? existing[0]?.timezone ?? "America/Los_Angeles",
+    defaultCurrency: body.defaultCurrency ?? existing[0]?.defaultCurrency ?? "USD",
+    notifyEmail: body.notifyEmail ?? existing[0]?.notifyEmail ?? "",
+    notifySlackUrl: body.notifySlackUrl ?? existing[0]?.notifySlackUrl ?? "",
+    notifyEvents: body.notifyEvents ?? existing[0]?.notifyEvents ?? [],
     webhookUrl: body.webhookUrl ?? existing[0]?.webhookUrl ?? "",
     signingSecretEncrypted: encrypt(newSecret),
     topics: body.topics ?? existing[0]?.topics ?? [],
@@ -113,6 +141,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .onConflictDoUpdate({
         target: tenantSettings.tenantAddress,
         set: {
+          orgName: record.orgName,
+          displayName: record.displayName,
+          timezone: record.timezone,
+          defaultCurrency: record.defaultCurrency,
+          notifyEmail: record.notifyEmail,
+          notifySlackUrl: record.notifySlackUrl,
+          notifyEvents: record.notifyEvents,
           webhookUrl: record.webhookUrl,
           signingSecretEncrypted: record.signingSecretEncrypted,
           topics: record.topics,
@@ -131,6 +166,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({
       settings: {
         tenantAddress: record.tenantAddress,
+        orgName: record.orgName,
+        displayName: record.displayName,
+        timezone: record.timezone,
+        defaultCurrency: record.defaultCurrency,
+        notifyEmail: record.notifyEmail,
+        notifySlackUrl: record.notifySlackUrl,
+        notifyEvents: record.notifyEvents,
         webhookUrl: record.webhookUrl,
         signingSecret: newSecret,
         topics: record.topics,

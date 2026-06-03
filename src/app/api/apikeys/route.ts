@@ -36,6 +36,7 @@ export async function GET(): Promise<NextResponse> {
         label: k.label,
         scopes: k.scopes,
         prefix: k.prefix,
+        environment: k.environment,
         ownerAddress: k.ownerAddress,
         createdAtMs: k.createdAtMs,
         lastUsedAtMs: k.lastUsedAtMs,
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
 
-  type Body = { label?: string; scopes?: string[] };
+  type Body = { label?: string; scopes?: string[]; environment?: "live" | "test" };
   let body: Body;
   try {
     body = (await req.json()) as Body;
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "label required" }, { status: 400 });
   }
 
+  const env: "live" | "test" = body.environment === "test" ? "test" : "live";
   const secret = genSecret();
   const hash = sha256Hex(secret);
   const record: NewApiKey = {
@@ -70,6 +72,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     label: body.label,
     scopes: body.scopes ?? ["workflows:read", "workflows:write"],
     prefix: secret.slice(0, 10),
+    environment: env,
     createdAtMs: Date.now(),
     lastUsedAtMs: null,
     revokedAtMs: null,
@@ -91,6 +94,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         label: record.label,
         scopes: record.scopes,
         prefix: record.prefix,
+        environment: record.environment,
         ownerAddress: record.ownerAddress,
         createdAtMs: record.createdAtMs,
         lastUsedAtMs: record.lastUsedAtMs,
