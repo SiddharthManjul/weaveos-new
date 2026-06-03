@@ -74,18 +74,32 @@ export const apiKeys = pgTable(
     label: text("label").notNull(),
     scopes: jsonb("scopes").$type<string[]>().notNull(),
     prefix: text("prefix").notNull(), // "wos_AbCdEf" — for UI identification
+    /** Tag for UI segmentation: "live" or "test". On chain there's no
+     *  distinction — both call the same Move package on Sui testnet. */
+    environment: text("environment").notNull().default("live"),
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
     lastUsedAtMs: bigint("last_used_at_ms", { mode: "number" }),
     revokedAtMs: bigint("revoked_at_ms", { mode: "number" }),
   },
   (t) => ({
     ownerIdx: index("api_keys_owner_idx").on(t.ownerAddress),
+    envIdx: index("api_keys_env_idx").on(t.environment),
   }),
 );
 
-/** Per-tenant runtime config — webhook delivery, signing secret, retry policy. */
+/** Per-tenant runtime config — org metadata, preferences, webhook delivery. */
 export const tenantSettings = pgTable("tenant_settings", {
   tenantAddress: text("tenant_address").primaryKey(),
+  /** Organisation metadata (displayed on /settings). */
+  orgName: text("org_name").notNull().default(""),
+  displayName: text("display_name").notNull().default(""),
+  timezone: text("timezone").notNull().default("America/Los_Angeles"),
+  defaultCurrency: text("default_currency").notNull().default("USD"),
+  /** Notification preferences (Settings → Notifications). */
+  notifyEmail: text("notify_email").notNull().default(""),
+  notifySlackUrl: text("notify_slack_url").notNull().default(""),
+  notifyEvents: jsonb("notify_events").$type<string[]>().notNull().default([]),
+  /** Webhook delivery (managed via /developer → Webhooks tab). */
   webhookUrl: text("webhook_url").notNull().default(""),
   /** AES-256-GCM ciphertext of the signing secret. Decrypted only at delivery time. */
   signingSecretEncrypted: text("signing_secret_encrypted").notNull().default(""),
@@ -282,6 +296,27 @@ export const workflowAgentLinks = pgTable(
   }),
 );
 
+// ─── Team / invites ─────────────────────────────────────────────────────────
+
+/** Pending + accepted team invites. Joined to `users` for the live team list. */
+export const teamInvites = pgTable(
+  "team_invites",
+  {
+    id: serial("id").primaryKey(),
+    tenantAddress: text("tenant_address").notNull(),
+    email: text("email").notNull(),
+    role: text("role").notNull().default("developer"),
+    status: text("status").notNull().default("pending"), // pending | accepted | revoked
+    invitedAtMs: bigint("invited_at_ms", { mode: "number" }).notNull(),
+    invitedBy: text("invited_by").notNull(),
+    joinedAtMs: bigint("joined_at_ms", { mode: "number" }),
+  },
+  (t) => ({
+    tenantIdx: index("team_invites_tenant_idx").on(t.tenantAddress),
+    tenantEmailUnique: uniqueIndex("team_invites_tenant_email_unique").on(t.tenantAddress, t.email),
+  }),
+);
+
 // ─── Operational ────────────────────────────────────────────────────────────
 
 /** Indexer high-water marks. One row per event type the indexer pages through. */
@@ -312,5 +347,7 @@ export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type Agent = typeof agents.$inferSelect;
 export type NewAgent = typeof agents.$inferInsert;
+export type TeamInvite = typeof teamInvites.$inferSelect;
+export type NewTeamInvite = typeof teamInvites.$inferInsert;
 export type WorkflowAgentLink = typeof workflowAgentLinks.$inferSelect;
 export type NewWorkflowAgentLink = typeof workflowAgentLinks.$inferInsert;
