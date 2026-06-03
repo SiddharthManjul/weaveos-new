@@ -221,19 +221,21 @@ export function SidebarUserChip() {
           {/* Outside-click backdrop */}
           <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
 
-          {/* Popover above the chip */}
-          <div className="absolute left-2 right-2 bottom-full mb-1 bg-[#1a1a1a] border border-[#272727] rounded-xl shadow-2xl z-50 overflow-hidden">
+          {/* Popover above the chip — wider than the sidebar so the full email
+              and full Sui address fit on one line. Overflows ~100px into the
+              main content area to the right. */}
+          <div className="absolute left-2 bottom-full mb-1 w-90 max-w-[calc(100vw-1rem)] bg-[#1a1a1a] border border-[#272727] rounded-xl shadow-2xl z-50 overflow-hidden">
             {/* Header — email */}
             <div className="px-4 py-3 border-b border-[#272727]">
-              <p className="text-[12px] text-[#d4d4d4] font-medium truncate">{session.email ?? displayName}</p>
+              <p className="text-[12px] text-[#d4d4d4] font-medium break-all">{session.email ?? displayName}</p>
               <p className="text-[10px] text-[#5a5a5a] mt-0.5">Signed in via Google → zkLogin</p>
             </div>
 
             {/* Address row with copy */}
             <div className="px-4 py-3 border-b border-[#272727] flex flex-col gap-1.5">
               <span className="text-[10px] text-[#5a5a5a] uppercase tracking-wider font-semibold">Sui address</span>
-              <button onClick={copyAddress} className="flex items-center justify-between gap-2 group">
-                <code className="font-mono text-[11px] text-[#d4d4d4] truncate">{session.suiAddress}</code>
+              <button onClick={copyAddress} className="flex items-center justify-between gap-2 group min-w-0">
+                <code className="font-mono text-[11px] text-[#d4d4d4] break-all text-left">{session.suiAddress}</code>
                 <HugeiconsIcon
                   icon={copied ? CheckmarkCircleIcon : CopyIcon}
                   size={12}
