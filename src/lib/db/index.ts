@@ -12,16 +12,29 @@ import * as schema from "./schema";
 let _pool: Pool | null = null;
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
+/**
+ * `pg-connection-string` v2.x warns loudly that `sslmode=require|prefer|verify-ca`
+ * will adopt stricter libpq semantics in v3. Neon's connection strings ship with
+ * `sslmode=require` and rely on the current (lenient) behavior — appending
+ * `uselibpqcompat=true` opts into libpq compatibility now, silencing the warning
+ * and pinning the behavior we already depend on.
+ */
+function normalizeNeonUrl(url: string): string {
+  if (url.includes("uselibpqcompat=")) return url;
+  if (!/[?&]sslmode=(require|prefer|verify-ca)\b/.test(url)) return url;
+  return url + (url.includes("?") ? "&" : "?") + "uselibpqcompat=true";
+}
+
 function getPool(): Pool {
   if (_pool) return _pool;
-  const url = process.env.DATABASE_URL;
-  if (!url) {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) {
     throw new Error(
       "DATABASE_URL is not set. Create a Neon Postgres database and paste the pooled connection string into .env.local.",
     );
   }
   _pool = new Pool({
-    connectionString: url,
+    connectionString: normalizeNeonUrl(raw),
     // Neon's pooler likes a small max — serverless functions reconnect cheaply.
     max: 5,
     idleTimeoutMillis: 10_000,

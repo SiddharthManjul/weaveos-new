@@ -74,6 +74,12 @@ type WorkflowDetail = {
     settledAtMs: number;
     splits: Array<{ recipient: string; amount: number; role: number }>;
   } | null;
+  dispute: {
+    evidenceBlobId: string | null;
+    filedBy: string;
+    timestampMs: number;
+    outcomeId: string;
+  } | null;
 };
 
 const STATUS_COLOR: Record<Status, { bg: string; color: string }> = {
@@ -472,6 +478,25 @@ export default function WorkflowDetailPage({
               k: "Dispute window ends",
               v: wf.outcome ? dt(wf.outcome.disputeWindowEndsMs) : "—",
             },
+            ...(wf.dispute?.evidenceBlobId
+              ? [
+                  {
+                    k: "Dispute evidence",
+                    v: (
+                      <div className="flex flex-col gap-1.5">
+                        <BlobChip
+                          blobId={wf.dispute.evidenceBlobId}
+                          label="Dispute evidence"
+                          onOpen={setBlob}
+                        />
+                        <span className="text-[11px] text-[#5a5a5a]">
+                          Filed by {shorten(wf.dispute.filedBy)} · {dt(wf.dispute.timestampMs)}
+                        </span>
+                      </div>
+                    ),
+                  },
+                ]
+              : []),
           ]}
         />
 

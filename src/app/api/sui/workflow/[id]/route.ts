@@ -2,8 +2,25 @@
 // Settlement objects in parallel.
 
 import { NextRequest, NextResponse } from "next/server";
+import { desc, eq } from "drizzle-orm";
+
 import { getWorkflow } from "@/lib/weaveos/queries";
 import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
+import { db, indexedDisputes } from "@/lib/db";
+
+function hexUtf8ToString(hex: string): string | null {
+  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (!/^[0-9a-fA-F]*$/.test(clean) || clean.length % 2 !== 0) return null;
+  try {
+    const bytes = new Uint8Array(clean.length / 2);
+    for (let i = 0; i < clean.length; i += 2) {
+      bytes[i / 2] = parseInt(clean.slice(i, i + 2), 16);
+    }
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
 
 export const runtime = "nodejs";
 
@@ -25,7 +42,27 @@ export async function GET(
     if (workflow.customer.toLowerCase() !== effectiveOnChainAddress(user).toLowerCase()) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
-    return NextResponse.json({ workflow });
+    // Attach the most recent dispute filed against this workflow (if any) —
+    // decoded so the UI can render the evidence blob directly. Disputes are
+    // scoped to this workflow only; the auth check above already restricts
+    // visibility to the workflow's customer.
+    const disputeRow = (
+      await db()
+        .select()
+        .from(indexedDisputes)
+        .where(eq(indexedDisputes.workflowId, workflow.id))
+        .orderBy(desc(indexedDisputes.timestampMs))
+        .limit(1)
+    )[0];
+    const dispute = disputeRow
+      ? {
+          evidenceBlobId: hexUtf8ToString(disputeRow.evidenceBlobIdHex),
+          filedBy: disputeRow.filedBy,
+          timestampMs: disputeRow.timestampMs,
+          outcomeId: disputeRow.outcomeId,
+        }
+      : null;
+    return NextResponse.json({ workflow: { ...workflow, dispute } });
   } catch (e) {
     return NextResponse.json(
       { error: `sui rpc failed: ${(e as Error).message}` },

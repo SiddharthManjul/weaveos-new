@@ -14,6 +14,7 @@ import {
   SettingsIcon,
   CancelIcon,
   StoreIcon,
+  CloudServerIcon,
 } from "@hugeicons/core-free-icons";
 
 import { SidebarUserChip } from "@/components/SidebarUserChip";
@@ -46,6 +47,7 @@ const navSections: NavSection[] = [
       { name: "Workflows", icon: WorkflowCircleIcon, href: "/workflows" },
       { name: "Quotes", icon: LegalDocumentIcon, href: "/quotes" },
       { name: "Settlement", icon: BankIcon, href: "/settlement" },
+      { name: "Walrus storage", icon: CloudServerIcon, href: "/walrus" },
     ],
   },
   {
