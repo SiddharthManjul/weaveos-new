@@ -74,6 +74,29 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
+  // === Owner-only gate ===
+  // The lifecycle signs every tx with the env-var customer keypair (because
+  // zkLogin tx signing is blocked on a self-hosted prover). That means a
+  // workflow's on-chain `customer` field is always the env-var address. Non-
+  // owner callers' dashboards scope to their own zkLogin address, so any
+  // workflow they start would be orphaned (visible to nobody). Refuse with a
+  // clear message rather than silently creating an unreachable workflow.
+  const ownerAddr = (
+    process.env.WEAVEOS_CUSTOMER_ADDRESS ?? ""
+  ).toLowerCase();
+  if (
+    ownerAddr &&
+    caller.onChainAddress.toLowerCase() !== ownerAddr
+  ) {
+    return Response.json(
+      {
+        error:
+          "Workflow creation is restricted to the project owner during the hackathon. Sign in with the owner Google account or use an owner-issued API key. Self-serve workflow creation will unlock when zkLogin tx signing is restored (self-hosted prover).",
+      },
+      { status: 403 },
+    );
+  }
+
   // === Body ===
   let body: StartBody = {};
   try {

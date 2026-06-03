@@ -24,6 +24,7 @@ import {
 } from "@/lib/weaveos/lifecycle";
 import { encodeCriteriaBytes, type SuccessCriterion } from "@/lib/weaveos/dsl";
 import { weaveosConfig } from "@/lib/weaveos/config";
+import { getCurrentUser, isOwner } from "@/lib/weaveos/session";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -70,6 +71,24 @@ function explorerObj(id: string): string {
 // === Route ===
 
 export async function POST(req: NextRequest): Promise<Response> {
+  // Owner-only gate: the lifecycle signs with the env-var customer keypair
+  // (zkLogin tx signing is blocked on a self-hosted prover), so any workflow
+  // started by a non-owner would be orphaned under the env-var address — not
+  // visible from their own scoped dashboard. Refuse with a clear message.
+  const user = await getCurrentUser();
+  if (!user) {
+    return Response.json({ error: "sign in to run a demo workflow" }, { status: 401 });
+  }
+  if (!isOwner(user)) {
+    return Response.json(
+      {
+        error:
+          "Demo workflows are restricted to the project owner during the hackathon. Sign in as the owner Google account to run the lifecycle. Self-serve runs unlock when zkLogin tx signing lands (self-hosted prover).",
+      },
+      { status: 403 },
+    );
+  }
+
   let body: RunBody = {};
   try {
     body = (await req.json()) as RunBody;

@@ -77,22 +77,40 @@ export function userCookieOptions(): {
 }
 
 /**
+ * Owner email — the one account that maps to the env-var customer keypair
+ * and inherits the existing testnet workflows. Every other signed-in user
+ * gets isolated scope (their own zkLogin address, with no pre-existing data).
+ *
+ * Override via `WEAVEOS_OWNER_EMAIL`. Defaults to the hackathon demo account.
+ */
+const OWNER_EMAIL = (process.env.WEAVEOS_OWNER_EMAIL ?? "crabtank02@gmail.com").toLowerCase();
+
+/** True iff this session belongs to the project owner (env-var customer holder). */
+export function isOwner(user: UserSession): boolean {
+  return (user.email ?? "").toLowerCase() === OWNER_EMAIL;
+}
+
+/**
  * The address used for filtering on-chain data + signing demo workflows.
  *
- * Ideally this would be the signed-in user's zkLogin address — but Sui
- * testnet's validator rejects proofs from Mysten's public dev prover
- * (the only prover that accepts arbitrary Google OAuth audiences), so
- * zkLogin transactions can't actually settle on chain in our setup. Until
- * we self-host the prover, workflows run signed by the env-var customer
- * keypair and the dashboard scopes to that address. The user's Google
- * identity still gates access, populates the sidebar chip, and writes
- * audit rows — only the on-chain customer field is fixed.
+ * • Owner (crabtank02@gmail.com): returns the env-var customer address. This
+ *   account holds the testnet keypair, the funded escrow, and every workflow
+ *   already settled on chain.
+ * • Everyone else: returns their own zkLogin-derived Sui address. They see an
+ *   empty dashboard scoped to their address with no overlap with the owner.
  *
- * When we eventually unblock zkLogin signing, this becomes `user.suiAddress`.
+ * Sui testnet's validator rejects proofs from Mysten's public dev prover
+ * (the only prover that accepts arbitrary Google OAuth audiences), so
+ * non-owner users can't sign workflow txs themselves. Workflow-start endpoints
+ * gate on `isOwner()` and return a friendly error for non-owners until the
+ * prover is self-hosted.
  */
-export function effectiveOnChainAddress(_user: UserSession): string {
-  return (
-    process.env.WEAVEOS_CUSTOMER_ADDRESS ??
-    "0xbc3789cb8bcfb43926f6d60382ca7e1a1664146a5f6ea0d4078e622fd3eb4c73"
-  );
+export function effectiveOnChainAddress(user: UserSession): string {
+  if (isOwner(user)) {
+    return (
+      process.env.WEAVEOS_CUSTOMER_ADDRESS ??
+      "0xbc3789cb8bcfb43926f6d60382ca7e1a1664146a5f6ea0d4078e622fd3eb4c73"
+    );
+  }
+  return user.suiAddress;
 }
