@@ -34,13 +34,6 @@ type NavSection = {
 
 const navSections: NavSection[] = [
   {
-    label: "Marketplace",
-    items: [
-      { name: "Hire an agent", icon: StoreIcon, href: "/marketplace" },
-      { name: "Agents", icon: UserGroupIcon, href: "/agents" },
-    ],
-  },
-  {
     label: "Operate",
     items: [
       { name: "Overview", icon: DashboardSquareIcon, href: "/dashboard" },
@@ -58,6 +51,13 @@ const navSections: NavSection[] = [
       // benchmarks that don't exist at hackathon scale. The page still works
       // at /pricing-intel and renders a Coming Soon placeholder.
       { name: "Customers", icon: UserGroupIcon, href: "/customers" },
+    ],
+  },
+  {
+    label: "Marketplace",
+    items: [
+      { name: "Hire an agent", icon: StoreIcon, href: "/marketplace" },
+      { name: "Agents", icon: UserGroupIcon, href: "/agents" },
     ],
   },
   {
@@ -83,7 +83,7 @@ export function Sidebar({
       className={`flex flex-col bg-[#070707] shrink-0
         fixed inset-y-0 left-0 z-60 w-65 transition-transform duration-300
         ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
-        md:static md:w-43.75 md:translate-x-0 md:min-h-screen`}
+        md:static md:w-65.625 md:translate-x-0 md:min-h-screen`}
     >
       {/* Logo + mobile close */}
       <div className="flex items-center justify-between px-4 pt-5 pb-6">
