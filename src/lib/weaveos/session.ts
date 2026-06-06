@@ -96,14 +96,11 @@ export function isOwner(user: UserSession): boolean {
  * • Owner (crabtank02@gmail.com): returns the env-var customer address. This
  *   account holds the testnet keypair, the funded escrow, and every workflow
  *   already settled on chain.
- * • Everyone else: returns their own zkLogin-derived Sui address. They see an
- *   empty dashboard scoped to their address with no overlap with the owner.
- *
- * Sui testnet's validator rejects proofs from Mysten's public dev prover
- * (the only prover that accepts arbitrary Google OAuth audiences), so
- * non-owner users can't sign workflow txs themselves. Workflow-start endpoints
- * gate on `isOwner()` and return a friendly error for non-owners until the
- * prover is self-hosted.
+ * • Everyone else: returns their own zkLogin-derived Sui address. Their
+ *   workflows still sign-on-chain with the env-var customer keypair (because
+ *   zkLogin tx signing is blocked on a self-hosted prover), but they're
+ *   attributed to the zkLogin address via `indexed_workflows.triggered_by` so
+ *   each user sees only the workflows they themselves triggered.
  */
 export function effectiveOnChainAddress(user: UserSession): string {
   if (isOwner(user)) {
@@ -113,4 +110,29 @@ export function effectiveOnChainAddress(user: UserSession): string {
     );
   }
   return user.suiAddress;
+}
+
+/**
+ * Per-user scope filter for `indexed_workflows` (and reads that join through
+ * it). Returns either a `customer` filter (owner — matches every on-chain row
+ * by the env-var customer field, including pre-existing testnet rows that
+ * predate the `triggered_by` column) or a `triggeredBy` filter (everyone else
+ * — matches only workflows the user themselves triggered).
+ *
+ * Always pass this object spread directly into a query helper:
+ *
+ *   listWorkflows({ ...scopeForUser(user) })
+ */
+export function scopeForUser(user: UserSession): {
+  customer?: string;
+  triggeredBy?: string;
+} {
+  if (isOwner(user)) {
+    return {
+      customer:
+        process.env.WEAVEOS_CUSTOMER_ADDRESS ??
+        "0xbc3789cb8bcfb43926f6d60382ca7e1a1664146a5f6ea0d4078e622fd3eb4c73",
+    };
+  }
+  return { triggeredBy: user.suiAddress };
 }
