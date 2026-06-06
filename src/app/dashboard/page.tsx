@@ -15,7 +15,7 @@ import {
   listWorkflows,
 } from "@/lib/db/queries";
 import { formatSui, marginPercent, relativeTime, shortenAddress } from "@/lib/weaveos/format";
-import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
+import { getCurrentUser, scopeForUser } from "@/lib/weaveos/session";
 import { redirect } from "next/navigation";
 
 const SUI_DECIMALS = 9;
@@ -118,7 +118,7 @@ export default async function Home() {
   const user = await getCurrentUser();
   if (!user) redirect("/?signin=1&next=/dashboard");
 
-  const scope = { customer: effectiveOnChainAddress(user) };
+  const scope = scopeForUser(user);
   const [stats, workflows, customers, disputes] = await Promise.all([
     dashboardStats(scope).catch(() => null),
     listWorkflows({ limit: 20, ...scope }).catch(() => []),
