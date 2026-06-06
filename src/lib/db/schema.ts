@@ -116,6 +116,11 @@ export const indexedWorkflows = pgTable(
   {
     id: text("id").primaryKey(),
     customer: text("customer").notNull(),
+    /** zkLogin Sui address of the signed-in user who triggered this workflow.
+     *  Nullable for legacy rows (CLI runs or anything created before the
+     *  column existed). The indexer never overwrites this — only the
+     *  workflow-start routes set it. */
+    triggeredBy: text("triggered_by"),
     productId: text("product_id").notNull(),
     status: integer("status").notNull(), // 0..5
     statusName: text("status_name").notNull(), // computed for readability
@@ -133,6 +138,7 @@ export const indexedWorkflows = pgTable(
   },
   (t) => ({
     customerIdx: index("workflows_customer_idx").on(t.customer),
+    triggeredByIdx: index("workflows_triggered_by_idx").on(t.triggeredBy),
     statusIdx: index("workflows_status_idx").on(t.status),
     productIdx: index("workflows_product_idx").on(t.productId),
   }),
