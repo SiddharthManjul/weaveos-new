@@ -16,6 +16,7 @@
 // functions unscoped from a request handler.
 
 import { sql, desc, eq, and, inArray } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 
 import {
   db,
@@ -25,7 +26,32 @@ import {
   indexedDisputes,
 } from "./index";
 
-type ScopedOpts = { limit?: number; customer?: string };
+/**
+ * Per-tenant scope filter.
+ * • `customer`: match by on-chain customer field. Used by the platform owner
+ *   to see every workflow signed with the env-var customer keypair (including
+ *   legacy rows that predate triggered_by).
+ * • `triggeredBy`: match by the signed-in user who triggered the workflow.
+ *   Used by non-owner accounts so they only see their own runs.
+ * Pass at most one. If both are set, customer wins.
+ */
+type ScopedOpts = { limit?: number; customer?: string; triggeredBy?: string };
+
+/** Build the WHERE clause used by every scoped workflow query. */
+function workflowScopeClause(opts?: ScopedOpts): SQL | undefined {
+  if (opts?.customer) {
+    return eq(indexedWorkflows.customer, opts.customer.toLowerCase());
+  }
+  if (opts?.triggeredBy) {
+    return eq(indexedWorkflows.triggeredBy, opts.triggeredBy.toLowerCase());
+  }
+  return undefined;
+}
+
+/** True iff a scope filter is set. */
+function hasScope(opts?: ScopedOpts): boolean {
+  return Boolean(opts?.customer || opts?.triggeredBy);
+}
 
 // === Workflow ===
 
@@ -53,9 +79,8 @@ export async function listWorkflows(opts?: ScopedOpts): Promise<WorkflowSummary[
     .from(indexedWorkflows)
     .orderBy(desc(indexedWorkflows.createdAtMs))
     .limit(opts?.limit ?? 50);
-  const rows = opts?.customer
-    ? await q.where(eq(indexedWorkflows.customer, opts.customer.toLowerCase()))
-    : await q;
+  const scope = workflowScopeClause(opts);
+  const rows = scope ? await q.where(scope) : await q;
   return rows.map((r) => ({
     id: r.id,
     customer: r.customer,
@@ -91,25 +116,33 @@ export type QuoteListItem = {
 };
 
 export async function listQuotes(opts?: ScopedOpts): Promise<QuoteListItem[]> {
+  // Quotes carry the on-chain customer field (same env-var address for every
+  // user). For non-owner scoping we join via workflows: a quote is "yours"
+  // if a workflow you triggered consumed it. The non-owner branch therefore
+  // computes the visible-quote set from workflow ids, not from quote.customer.
   const baseQ = db()
     .select()
     .from(indexedQuotes)
     .orderBy(desc(indexedQuotes.createdAtMs))
     .limit(opts?.limit ?? 50);
-  const quotes = opts?.customer
-    ? await baseQ.where(eq(indexedQuotes.customer, opts.customer.toLowerCase()))
-    : await baseQ;
-
-  // Compute "used" via a join against indexed_workflows. When scoped, restrict
-  // the workflow scan to the same customer so a foreign workflow that happens
-  // to reference our quote can't flip its status.
-  const wfQ = db().select({ quoteId: indexedWorkflows.quoteId }).from(indexedWorkflows);
-  const workflowQuoteIds = opts?.customer
-    ? await wfQ.where(eq(indexedWorkflows.customer, opts.customer.toLowerCase()))
-    : await wfQ;
-  const usedSet = new Set(
-    workflowQuoteIds.map((w) => w.quoteId).filter((x): x is string => x != null),
+  const wfQ = db().select({ id: indexedWorkflows.id, quoteId: indexedWorkflows.quoteId }).from(indexedWorkflows);
+  const scope = workflowScopeClause(opts);
+  const myWorkflows = scope ? await wfQ.where(scope) : await wfQ;
+  const myQuoteIds = new Set(
+    myWorkflows.map((w) => w.quoteId).filter((x): x is string => x != null),
   );
+
+  let quotes: typeof indexedQuotes.$inferSelect[];
+  if (opts?.customer) {
+    quotes = await baseQ.where(eq(indexedQuotes.customer, opts.customer.toLowerCase()));
+  } else if (opts?.triggeredBy) {
+    // Non-owner: only quotes consumed by a workflow they triggered.
+    if (myQuoteIds.size === 0) return [];
+    quotes = await baseQ.where(inArray(indexedQuotes.id, Array.from(myQuoteIds)));
+  } else {
+    quotes = await baseQ;
+  }
+  const usedSet = myQuoteIds;
 
   const now = Date.now();
   return quotes.map((q) => {
@@ -147,15 +180,15 @@ export type SettlementSummary = {
 
 export async function listSettlements(opts?: ScopedOpts): Promise<SettlementSummary[]> {
   // Settlements don't carry a customer column directly — they're joined via
-  // workflowId. When scoped we restrict to settlements whose workflow is owned
-  // by the requested customer.
-  if (opts?.customer) {
-    const customer = opts.customer.toLowerCase();
+  // workflowId. When scoped we restrict to settlements whose workflow matches
+  // the scope clause.
+  const scope = workflowScopeClause(opts);
+  if (scope) {
     const myWorkflowIds = (
       await db()
         .select({ id: indexedWorkflows.id })
         .from(indexedWorkflows)
-        .where(eq(indexedWorkflows.customer, customer))
+        .where(scope)
     ).map((r) => r.id);
     if (myWorkflowIds.length === 0) return [];
     const rows = await db()
@@ -200,14 +233,14 @@ export type DisputeEventRow = {
 
 export async function listDisputes(opts?: ScopedOpts): Promise<DisputeEventRow[]> {
   // Disputes are filed by an address (filed_by). When scoped, return disputes
-  // either filed by the customer OR attached to workflows owned by the customer.
-  if (opts?.customer) {
-    const customer = opts.customer.toLowerCase();
+  // attached to workflows in the user's scope.
+  const scope = workflowScopeClause(opts);
+  if (scope) {
     const myWorkflowIds = (
       await db()
         .select({ id: indexedWorkflows.id })
         .from(indexedWorkflows)
-        .where(eq(indexedWorkflows.customer, customer))
+        .where(scope)
     ).map((r) => r.id);
     if (myWorkflowIds.length === 0) return [];
     const rows = await db()
@@ -250,10 +283,13 @@ export type DisputeStats = {
   }>;
 };
 
-export async function disputeStats(opts?: { customer?: string }): Promise<DisputeStats> {
+export async function disputeStats(opts?: {
+  customer?: string;
+  triggeredBy?: string;
+}): Promise<DisputeStats> {
   const [disputes, settlements] = await Promise.all([
-    listDisputes({ limit: 200, customer: opts?.customer }),
-    listSettlements({ limit: 200, customer: opts?.customer }),
+    listDisputes({ limit: 200, customer: opts?.customer, triggeredBy: opts?.triggeredBy }),
+    listSettlements({ limit: 200, customer: opts?.customer, triggeredBy: opts?.triggeredBy }),
   ]);
   const total = disputes.length;
   const settledTotal = settlements.length;
@@ -312,11 +348,16 @@ export type CustomerAggregate = {
 };
 
 export async function customerAggregates(opts?: ScopedOpts): Promise<CustomerAggregate[]> {
-  // Scoped: one row for the requested customer (or empty if they have no
-  // workflows yet). Unscoped: every customer, descending by GMV.
+  // For non-owner scoping (triggeredBy) we want the user to appear under
+  // their own zkLogin address in the customer table — not under the env-var
+  // customer field which is always identical. Substitute the displayed
+  // customer column with the scope address in that case.
+  const displayCustomer = opts?.triggeredBy
+    ? sql<string>`${opts.triggeredBy.toLowerCase()}`
+    : indexedWorkflows.customer;
   const baseSelect = db()
     .select({
-      customer: indexedWorkflows.customer,
+      customer: sql<string>`${displayCustomer}`.as("customer"),
       workflowCount: sql<number>`COUNT(*)::int`,
       totalSettled: sql<number>`COALESCE(SUM(${indexedWorkflows.totalRevenue}), 0)::bigint`,
       totalEscrowed: sql<number>`COALESCE(SUM(${indexedWorkflows.escrowBalance}), 0)::bigint`,
@@ -324,12 +365,11 @@ export async function customerAggregates(opts?: ScopedOpts): Promise<CustomerAgg
       refundedCount: sql<number>`COUNT(CASE WHEN ${indexedWorkflows.status} = 5 THEN 1 END)::int`,
     })
     .from(indexedWorkflows)
-    .groupBy(indexedWorkflows.customer)
+    .groupBy(opts?.triggeredBy ? sql`1` : indexedWorkflows.customer)
     .orderBy(desc(sql`SUM(${indexedWorkflows.totalRevenue})`))
     .limit(opts?.limit ?? 100);
-  const rows = opts?.customer
-    ? await baseSelect.where(eq(indexedWorkflows.customer, opts.customer.toLowerCase()))
-    : await baseSelect;
+  const scope = workflowScopeClause(opts);
+  const rows = scope ? await baseSelect.where(scope) : await baseSelect;
   return rows.map((r) => ({
     customer: r.customer,
     workflowCount: Number(r.workflowCount),
@@ -353,17 +393,20 @@ export type DashboardStats = {
   refunded: number;
 };
 
-export async function dashboardStats(opts?: { customer?: string }): Promise<DashboardStats> {
+export async function dashboardStats(opts?: {
+  customer?: string;
+  triggeredBy?: string;
+}): Promise<DashboardStats> {
   const d = db();
-  const customer = opts?.customer?.toLowerCase();
-  const wfRows = customer
-    ? await d.select().from(indexedWorkflows).where(eq(indexedWorkflows.customer, customer))
+  const scope = workflowScopeClause(opts);
+  const wfRows = scope
+    ? await d.select().from(indexedWorkflows).where(scope)
     : await d.select().from(indexedWorkflows);
 
   // For platform-fee math we need settlements scoped the same way. If we
   // scoped wf rows, restrict settlements to those workflow IDs.
   let settled: Array<{ platformFee: number }>;
-  if (customer) {
+  if (scope) {
     const ids = wfRows.map((w) => w.id);
     settled = ids.length === 0
       ? []
@@ -413,10 +456,12 @@ export type MarginByProduct = {
   marginPct: number;
 };
 
-export async function marginByProduct(opts?: { customer?: string }): Promise<MarginByProduct[]> {
-  const where = opts?.customer
-    ? and(eq(indexedWorkflows.status, 3), eq(indexedWorkflows.customer, opts.customer.toLowerCase()))
-    : eq(indexedWorkflows.status, 3);
+export async function marginByProduct(opts?: {
+  customer?: string;
+  triggeredBy?: string;
+}): Promise<MarginByProduct[]> {
+  const scope = workflowScopeClause(opts);
+  const where = scope ? and(eq(indexedWorkflows.status, 3), scope) : eq(indexedWorkflows.status, 3);
   const rows = await db()
     .select({
       productId: indexedWorkflows.productId,
