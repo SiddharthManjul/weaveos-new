@@ -2,7 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { dashboardStats } from "@/lib/db/queries";
-import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
+import { getCurrentUser, scopeForUser } from "@/lib/weaveos/session";
 
 export const runtime = "nodejs";
 
@@ -10,7 +10,7 @@ export async function GET(): Promise<NextResponse> {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
   try {
-    const stats = await dashboardStats({ customer: effectiveOnChainAddress(user) });
+    const stats = await dashboardStats(scopeForUser(user));
     return NextResponse.json({ stats });
   } catch (e) {
     return NextResponse.json(

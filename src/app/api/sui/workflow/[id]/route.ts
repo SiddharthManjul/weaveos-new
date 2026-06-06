@@ -5,8 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
 
 import { getWorkflow } from "@/lib/weaveos/queries";
-import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
-import { db, indexedDisputes } from "@/lib/db";
+import { getCurrentUser, scopeForUser } from "@/lib/weaveos/session";
+import { db, indexedDisputes, indexedWorkflows } from "@/lib/db";
 
 function hexUtf8ToString(hex: string): string | null {
   const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
@@ -37,10 +37,27 @@ export async function GET(
   try {
     const workflow = await getWorkflow(id);
     if (!workflow) return NextResponse.json({ error: "not found" }, { status: 404 });
-    // Authorisation: the workflow's customer must match the user's effective
-    // on-chain address (env-var customer until zkLogin tx signing is restored).
-    if (workflow.customer.toLowerCase() !== effectiveOnChainAddress(user).toLowerCase()) {
-      return NextResponse.json({ error: "not found" }, { status: 404 });
+    // Authorisation: owner sees any workflow under the env-var customer
+    // (matches scope.customer). Non-owners see workflows they personally
+    // triggered (matches scope.triggeredBy, mirrored from
+    // indexed_workflows.triggered_by).
+    const scope = scopeForUser(user);
+    if (scope.customer) {
+      if (workflow.customer.toLowerCase() !== scope.customer.toLowerCase()) {
+        return NextResponse.json({ error: "not found" }, { status: 404 });
+      }
+    } else {
+      const row = (
+        await db()
+          .select({ triggeredBy: indexedWorkflows.triggeredBy })
+          .from(indexedWorkflows)
+          .where(eq(indexedWorkflows.id, workflow.id))
+          .limit(1)
+      )[0];
+      const triggered = row?.triggeredBy?.toLowerCase() ?? null;
+      if (triggered !== (scope.triggeredBy ?? "").toLowerCase()) {
+        return NextResponse.json({ error: "not found" }, { status: 404 });
+      }
     }
     // Attach the most recent dispute filed against this workflow (if any) —
     // decoded so the UI can render the evidence blob directly. Disputes are

@@ -8,9 +8,10 @@
 //   • proof    — Outcome.proof_blob_id     (verifier audit trail)
 //   • dispute  — Dispute.evidence_blob_id  (customer's filed evidence)
 //
-// Scoping: workflows are filtered by `customer = effectiveOnChainAddress(user)`
-// via the Postgres-indexed `indexed_workflows` table. Disputes are joined to
-// those workflow IDs so a user can never see another user's evidence.
+// Scoping: workflows are filtered by `scopeForUser(user)` via the Postgres-
+// indexed `indexed_workflows` table — owner matches the env-var customer
+// field (legacy), every other user matches by `triggered_by`. Disputes are
+// joined to those workflow IDs so a user can never see another user's evidence.
 //
 // Source of blob IDs:
 //   - outcome / trace / proof live on chain inside the Execution + Outcome
@@ -23,7 +24,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
+import { getCurrentUser, scopeForUser } from "@/lib/weaveos/session";
 import { listWorkflows, listDisputes } from "@/lib/db/queries";
 import { getWorkflow } from "@/lib/weaveos/queries";
 
@@ -62,11 +63,11 @@ function hexUtf8ToString(hex: string): string | null {
 export async function GET(_req: NextRequest): Promise<NextResponse> {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
-  const customer = effectiveOnChainAddress(user);
+  const scope = scopeForUser(user);
 
   try {
     // 1. The user's workflows (most-recent first, capped).
-    const workflows = await listWorkflows({ customer, limit: 30 });
+    const workflows = await listWorkflows({ ...scope, limit: 30 });
 
     // 2. Fan out to Sui RPC for each workflow with at least one linked object
     //    that carries a blob ID (Execution → trace, Outcome → artifact + proof).
@@ -119,7 +120,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
     }
 
     // 3. Disputes — already in Postgres, just decode hex → utf8 blob ID.
-    const disputes = await listDisputes({ customer, limit: 100 });
+    const disputes = await listDisputes({ ...scope, limit: 100 });
     for (const d of disputes) {
       const blobId = hexUtf8ToString(d.evidenceBlobIdHex);
       if (!blobId) continue;
@@ -145,7 +146,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
     for (const b of blobs) counts[b.kind] += 1;
 
     return NextResponse.json({
-      customer,
+      customer: scope.customer ?? scope.triggeredBy ?? null,
       totalCount: blobs.length,
       counts,
       blobs,

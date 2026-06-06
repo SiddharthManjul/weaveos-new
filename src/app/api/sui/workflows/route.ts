@@ -6,7 +6,7 @@
 
 import { NextResponse } from "next/server";
 import { listWorkflows } from "@/lib/db/queries";
-import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
+import { getCurrentUser, scopeForUser } from "@/lib/weaveos/session";
 
 export const runtime = "nodejs";
 
@@ -14,7 +14,7 @@ export async function GET(): Promise<NextResponse> {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
   try {
-    const workflows = await listWorkflows({ limit: 50, customer: effectiveOnChainAddress(user) });
+    const workflows = await listWorkflows({ limit: 50, ...scopeForUser(user) });
     return NextResponse.json({ workflows });
   } catch (e) {
     return NextResponse.json(

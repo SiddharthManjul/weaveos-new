@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { customerAggregates } from "@/lib/db/queries";
-import { effectiveOnChainAddress, getCurrentUser } from "@/lib/weaveos/session";
+import { getCurrentUser, scopeForUser } from "@/lib/weaveos/session";
 
 export const runtime = "nodejs";
 
@@ -11,7 +11,7 @@ export async function GET(): Promise<NextResponse> {
     // Per-tenant: this returns at most one row — the current user's own aggregate.
     // For the "Customers" directory page it surfaces the user's own activity in
     // the same shape the dashboard chart expects.
-    const customers = await customerAggregates({ limit: 100, customer: effectiveOnChainAddress(user) });
+    const customers = await customerAggregates({ limit: 100, ...scopeForUser(user) });
     return NextResponse.json({ customers });
   } catch (e) {
     return NextResponse.json(

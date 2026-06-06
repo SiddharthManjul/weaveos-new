@@ -35,6 +35,7 @@ import { encodeCriteriaBytes, type SuccessCriterion } from "@/lib/weaveos/dsl";
 import { weaveosConfig } from "@/lib/weaveos/config";
 import { resolveCaller } from "@/lib/weaveos/auth";
 import { linkWorkflowToAgent } from "@/lib/db/agents";
+import { db, indexedWorkflows } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -74,28 +75,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
-  // === Owner-only gate ===
-  // The lifecycle signs every tx with the env-var customer keypair (because
-  // zkLogin tx signing is blocked on a self-hosted prover). That means a
-  // workflow's on-chain `customer` field is always the env-var address. Non-
-  // owner callers' dashboards scope to their own zkLogin address, so any
-  // workflow they start would be orphaned (visible to nobody). Refuse with a
-  // clear message rather than silently creating an unreachable workflow.
-  const ownerAddr = (
-    process.env.WEAVEOS_CUSTOMER_ADDRESS ?? ""
-  ).toLowerCase();
-  if (
-    ownerAddr &&
-    caller.onChainAddress.toLowerCase() !== ownerAddr
-  ) {
-    return Response.json(
-      {
-        error:
-          "Workflow creation is restricted to the project owner during the hackathon. Sign in with the owner Google account or use an owner-issued API key. Self-serve workflow creation will unlock when zkLogin tx signing is restored (self-hosted prover).",
-      },
-      { status: 403 },
-    );
-  }
+  // Every authenticated caller can start a workflow. The lifecycle signs with
+  // the env-var customer keypair (zkLogin tx signing is blocked on a self-
+  // hosted prover), but each workflow is attributed back to the calling user
+  // via indexed_workflows.triggered_by so dashboards stay isolated per user.
 
   // === Body ===
   let body: StartBody = {};
@@ -189,6 +172,31 @@ export async function POST(req: NextRequest): Promise<Response> {
         quoteId: q.quoteId,
         paymentBaseUnits: priceBaseUnits,
       });
+      // Attribute the workflow to the calling user. The indexer's later
+      // upsert intentionally doesn't touch triggered_by, so this value
+      // sticks.
+      try {
+        await db()
+          .insert(indexedWorkflows)
+          .values({
+            id: w.workflowId,
+            customer: customerAddr.toLowerCase(),
+            triggeredBy: caller.onChainAddress.toLowerCase(),
+            productId,
+            status: 0,
+            statusName: "Quoted",
+            quoteId: q.quoteId,
+            createdAtMs: Date.now(),
+            updatedAtMs: Date.now(),
+            indexedAtMs: Date.now(),
+          })
+          .onConflictDoUpdate({
+            target: indexedWorkflows.id,
+            set: { triggeredBy: caller.onChainAddress.toLowerCase() },
+          });
+      } catch {
+        // best-effort; lifecycle continues even if the attribution row fails
+      }
       // Marketplace link: tag the workflow with the fulfilling agent so its
       // track record updates as soon as the lifecycle hits settle.
       if (body.agentId) {
