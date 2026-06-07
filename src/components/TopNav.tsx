@@ -372,8 +372,11 @@ export function TopNav({ onMenuClick }: { onMenuClick?: () => void }) {
         </div>
       </div>
 
-      {/* Mobile bottom bar — glass effect */}
-      <div className="md:hidden fixed bottom-0 inset-x-0 z-50 px-4 pb-5 pt-3 flex items-end gap-3 pointer-events-none">
+      {/* Mobile bottom bar — glass effect. Container has pointer-events-none so
+          taps pass through anywhere not covered by an explicit button below.
+          pb uses env(safe-area-inset-bottom) so the bar lifts above the iOS
+          home indicator instead of sitting underneath it. */}
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-50 px-4 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] flex items-end gap-3 pointer-events-none">
         {/* Search */}
         <button
           onClick={() => { setSpotlight(true); setNotifs(false); }}

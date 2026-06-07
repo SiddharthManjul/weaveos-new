@@ -80,13 +80,13 @@ export function Sidebar({
   const pathname = usePathname();
   return (
     <aside
-      className={`flex flex-col bg-[#070707] shrink-0
+      className={`flex flex-col bg-[#070707] shrink-0 h-screen
         fixed inset-y-0 left-0 z-60 w-65 transition-transform duration-300
         ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
-        md:static md:w-65.625 md:translate-x-0 md:min-h-screen`}
+        md:static md:w-65.625 md:translate-x-0`}
     >
-      {/* Logo + mobile close */}
-      <div className="flex items-center justify-between px-4 pt-5 pb-6">
+      {/* Logo + mobile close — pinned at top */}
+      <div className="flex items-center justify-between px-4 pt-5 pb-6 shrink-0">
         <div className="flex items-center">
           <img src="/logo.svg" alt="WeaveOS" width={100} height={21} style={{ display: "block" }} />
         </div>
@@ -98,8 +98,10 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex flex-col gap-5 flex-1 px-2.5">
+      {/* Navigation — scrollable middle. min-h-0 unlocks the flex-1 + overflow combo
+          so short mobile viewports can scroll the nav while keeping the user chip
+          pinned at the bottom. */}
+      <nav className="flex flex-col gap-5 flex-1 min-h-0 px-2.5 overflow-y-auto overscroll-contain">
         {navSections.map((section) => (
           <div key={section.label} className="flex flex-col gap-0.5">
             <p className="text-[#4d4d4d] text-[13px] font-medium px-2 mb-1">
@@ -128,9 +130,11 @@ export function Sidebar({
         ))}
       </nav>
 
-      {/* Bottom user section — session-driven */}
-      <div className="mx-2.5 border-t border-dashed border-[#272727] mb-1" />
-      <SidebarUserChip />
+      {/* Bottom user section — pinned, session-driven */}
+      <div className="shrink-0">
+        <div className="mx-2.5 border-t border-dashed border-[#272727] mb-1" />
+        <SidebarUserChip />
+      </div>
     </aside>
   );
 }

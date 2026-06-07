@@ -51,7 +51,11 @@ export function ShellLayout({ children }: { children: React.ReactNode }) {
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <TopNav onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex flex-1 flex-col overflow-hidden bg-[#101010] mx-3 mb-20 rounded-2xl md:ml-0 md:mr-5 md:mb-5">
+        {/* Bottom margin reserves space for the mobile floating bar (search +
+            bell). Arbitrary `calc()` with env(safe-area-inset-bottom) handles
+            notched phones; `md:mb-5` overrides for desktop where the floating
+            bar is hidden. */}
+        <main className="flex flex-1 flex-col overflow-hidden bg-[#101010] mx-3 mb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] rounded-2xl md:ml-0 md:mr-5 md:mb-5">
           {children}
         </main>
       </div>
