@@ -309,7 +309,7 @@ export default function WorkflowsPage() {
   });
 
   return (
-    <div className="flex flex-col h-full overflow-hidden p-6 gap-4">
+    <div className="flex flex-col h-full overflow-hidden p-4 md:p-6 gap-4">
 
       {/* Filter bar */}
       <div className="flex items-center gap-3 shrink-0 flex-wrap">
@@ -375,25 +375,27 @@ export default function WorkflowsPage() {
           className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium bg-[#3064FF] hover:bg-[#2050d0] text-white transition-colors"
         >
           <HugeiconsIcon icon={PlayCircleIcon} size={14} color="currentColor" strokeWidth={1.5} />
-          + Create workflow
+          <span className="hidden sm:inline">+ Create workflow</span>
+          <span className="sm:hidden">Create</span>
         </button>
 
-        {/* Run demo */}
+        {/* Run demo — visible on mobile too so judges on phones can hit it */}
         <button
           onClick={() => {
             setDemoMode("success");
             setDemoOpen(true);
           }}
-          className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium bg-[#1e1e1e] border border-[#272727] text-[#a3a3a3] hover:text-white transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium bg-[#1e1e1e] border border-[#272727] text-[#a3a3a3] hover:text-white transition-colors"
         >
-          Run demo workflow
+          <span className="hidden sm:inline">Run demo workflow</span>
+          <span className="sm:hidden">Run demo</span>
         </button>
         <button
           onClick={() => {
             setDemoMode("failure");
             setDemoOpen(true);
           }}
-          className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium bg-[#1e1e1e] border border-[#272727] text-[#a3a3a3] hover:text-white transition-colors"
+          className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-full text-[13px] font-medium bg-[#1e1e1e] border border-[#272727] text-[#a3a3a3] hover:text-white transition-colors"
         >
           Run failure case
         </button>

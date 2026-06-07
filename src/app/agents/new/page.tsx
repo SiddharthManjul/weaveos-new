@@ -143,7 +143,7 @@ export default function NewAgentPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto p-6 gap-5">
+    <div className="flex flex-col h-full overflow-y-auto p-4 md:p-6 gap-5">
       <button
         onClick={() => router.push("/agents")}
         className="self-start flex items-center gap-1.5 text-[12px] text-[#5a5a5a] hover:text-white"

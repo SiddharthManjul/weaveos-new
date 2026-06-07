@@ -77,7 +77,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ slug: st
 
   if (error) {
     return (
-      <div className="flex flex-col h-full overflow-y-auto p-6 gap-4">
+      <div className="flex flex-col h-full overflow-y-auto p-4 md:p-6 gap-4">
         <button
           onClick={() => router.push("/agents")}
           className="self-start flex items-center gap-1.5 text-[12px] text-[#5a5a5a] hover:text-white"
@@ -95,7 +95,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ slug: st
 
   if (!agent) {
     return (
-      <div className="flex flex-col h-full overflow-y-auto p-6 gap-4 fade-in">
+      <div className="flex flex-col h-full overflow-y-auto p-4 md:p-6 gap-4 fade-in">
         <div className="flex items-center gap-4">
           <div className="skeleton rounded-2xl h-16 w-16" />
           <div className="flex flex-col gap-2 flex-1 max-w-md">
@@ -120,7 +120,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ slug: st
     totalRuns === 0 ? null : Math.round((agent.track.disputeCount / totalRuns) * 100);
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto p-6 gap-5">
+    <div className="flex flex-col h-full overflow-y-auto p-4 md:p-6 gap-5">
       <button
         onClick={() => router.push("/agents")}
         className="self-start flex items-center gap-1.5 text-[12px] text-[#5a5a5a] hover:text-white"

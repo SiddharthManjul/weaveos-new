@@ -253,7 +253,7 @@ export default function WorkflowDetailPage({
 
   if (loading) {
     return (
-      <div className="flex flex-col h-full overflow-y-auto p-6 gap-4 fade-in">
+      <div className="flex flex-col h-full overflow-y-auto p-4 md:p-6 gap-4 fade-in">
         {/* Header skeleton */}
         <div className="bg-[#171718] border border-[#1e1e1e] rounded-[20px] px-5 py-4 flex flex-col gap-3">
           <div className="flex items-center justify-between flex-wrap gap-3">
@@ -317,7 +317,7 @@ export default function WorkflowDetailPage({
       : "—";
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto p-6 gap-4">
+    <div className="flex flex-col h-full overflow-y-auto p-4 md:p-6 gap-4">
       {/* ─── Header ─── */}
       <div className="bg-[#171718] border border-[#1e1e1e] rounded-[20px] px-5 py-4 flex flex-col gap-3">
         <div className="flex items-center justify-between flex-wrap gap-3">

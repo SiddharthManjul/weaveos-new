@@ -94,7 +94,7 @@ export default function AgentsPage() {
   }, [tag, q]);
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto p-6 gap-5">
+    <div className="flex flex-col h-full overflow-y-auto p-4 md:p-6 gap-5">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>

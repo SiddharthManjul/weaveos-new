@@ -473,7 +473,7 @@ const workflow = await ch.workflows.create({
 console.log(workflow.id) // wf_xxxxxxxx`;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden p-6 gap-5">
+    <div className="flex flex-col h-full overflow-hidden p-4 md:p-6 gap-5">
 
       {/* Tab navigation */}
       <div className="flex items-center gap-6 shrink-0">

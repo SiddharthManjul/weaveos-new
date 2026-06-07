@@ -201,7 +201,7 @@ export default function CustomersPage() {
   const totalCustomers = customers.length;
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto p-6 gap-4">
+    <div className="flex flex-col h-full overflow-y-auto p-4 md:p-6 gap-4">
       {/* KPI strip */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 shrink-0">
         <KpiCard label="Customers (off-chain)" value={String(totalCustomers)} sub={kvLive ? "Vercel KV" : "in-memory"} icon={UserGroupIcon} />

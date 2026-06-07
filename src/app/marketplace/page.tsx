@@ -101,7 +101,7 @@ export default function MarketplacePage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto p-6 gap-5">
+    <div className="flex flex-col h-full overflow-y-auto p-4 md:p-6 gap-5">
       <div>
         <div className="flex items-center gap-2">
           <HugeiconsIcon icon={StoreIcon} size={18} color="#3064FF" strokeWidth={1.5} />

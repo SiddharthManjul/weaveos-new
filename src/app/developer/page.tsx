@@ -334,8 +334,11 @@ function ApiKeysTab() {
         />
       )}
 
-      {/* Table */}
+      {/* Table — horizontal scroll on mobile so the fixed grid template
+          doesn't collapse the columns into unreadable widths. */}
       <div className="bg-[#171718] border border-[#1e1e1e] rounded-[20px] overflow-hidden">
+        <div className="overflow-x-auto">
+        <div className="min-w-[640px]">
         <div className="grid grid-cols-[1.4fr_1.4fr_0.7fr_1fr_0.8fr_60px] gap-x-4 items-center px-6 py-4">
           {["Name", "Key", "Environment", "Last Used", "Status", ""].map((h) => (
             <span key={h} className="text-[#5a5a5a] text-[12px] font-medium uppercase tracking-wider">
@@ -405,6 +408,8 @@ function ApiKeysTab() {
             );
           })
         )}
+        </div>
+        </div>
       </div>
 
       <p className="text-[11px] text-[#5a5a5a] text-center">
