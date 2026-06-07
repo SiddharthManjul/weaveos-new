@@ -106,36 +106,55 @@ function SplitBar({ settlement }: { settlement?: ApiSettlement }) {
   const headerLabel = settlement
     ? `Settlement ${shortAddr(settlement.id)} · workflow ${shortAddr(settlement.workflowId)}`
     : "Example settlement (no on-chain settlements yet)";
-  return (
-    <div className="shrink-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] px-6 pt-5 pb-5">
-      {/* Header */}
-      <p className="text-[#a3a3a3] text-[11px] font-semibold tracking-widest uppercase mb-0.5">
-        Multi-Party Split{isReal ? "" : " — Example"}: {headerAmount}
-      </p>
-      <p className="text-[#5a5a5a] text-[13px] mb-4">{headerLabel}</p>
 
-      {/* Bar */}
-      <div className="flex rounded-xl overflow-hidden mb-3" style={{ height: 52 }}>
+  return (
+    <div className="shrink-0 bg-[#171718] rounded-[20px] border border-[#1e1e1e] px-5 md:px-6 pt-5 pb-5">
+      {/* Header */}
+      <div className="flex items-baseline justify-between gap-4 flex-wrap mb-4">
+        <div className="min-w-0">
+          <p className="text-[#5a5a5a] text-[11px] font-semibold tracking-widest uppercase mb-1">
+            Multi-Party Split{isReal ? "" : " · Example"}
+          </p>
+          <p className="text-[#5a5a5a] text-[12px] truncate">{headerLabel}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-white text-[20px] font-semibold tracking-tight tabular-nums leading-none">
+            {headerAmount}
+          </p>
+          <p className="text-[#5a5a5a] text-[11px] mt-1">total settled</p>
+        </div>
+      </div>
+
+      {/* Bar — clean colored band, no inline text. 1px gaps between
+          segments for crisp separation. */}
+      <div
+        className="flex w-full rounded-lg overflow-hidden bg-[#0a0a0a] gap-[2px]"
+        style={{ height: 10 }}
+      >
         {segments.map((s) => (
           <div
             key={s.label}
-            className="flex items-center justify-center"
-            style={{ width: `${s.pct}%`, background: s.color }}
-          >
-            <span className="font-semibold text-[15px]" style={{ color: s.textColor }}>
-              {s.pct}%
-            </span>
-          </div>
+            className="h-full transition-opacity hover:opacity-90"
+            style={{ width: `${s.pct}%`, background: s.color, minWidth: 2 }}
+            title={`${s.label} — ${s.pct}% (${s.amount})`}
+          />
         ))}
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+      {/* Legend — matches the TopCustomersChart chip style: small
+          rounded-sm colored swatch + label, with percentage and amount
+          right after. Clean horizontal row that wraps as needed. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4">
         {segments.map((s) => (
           <div key={s.label} className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
-            <span className="text-[#d4d4d4] text-[13px] font-medium">{s.label}</span>
-            <span className="text-[#5a5a5a] text-[13px]">{s.pct}% · {s.amount}</span>
+            <span
+              className="w-4 h-2.5 rounded-sm shrink-0"
+              style={{ background: s.color }}
+            />
+            <span className="text-[#a3a3a3] text-[13px]">{s.label}</span>
+            <span className="text-[#5a5a5a] text-[13px] tabular-nums">
+              {s.pct}% · {s.amount}
+            </span>
           </div>
         ))}
       </div>
