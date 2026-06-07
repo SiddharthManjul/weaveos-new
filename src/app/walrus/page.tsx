@@ -239,7 +239,7 @@ export default function WalrusPage() {
   }, [data]);
 
   return (
-    <div className="flex flex-col gap-5 p-5 md:p-7">
+    <div className="flex flex-col h-full overflow-y-auto gap-5 p-4 md:p-7">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-start gap-3">
